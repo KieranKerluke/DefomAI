@@ -215,13 +215,13 @@ async def check_billing_status(client, user_id: str) -> Tuple[bool, str, Optiona
     Returns:
         Tuple[bool, str, Optional[Dict]]: (can_run, message, subscription_info)
     """
-    if config.ENV_MODE == EnvMode.LOCAL:
-        logger.info("Running in local development mode - billing checks are disabled")
-        return True, "Local development mode - billing disabled", {
-            "price_id": "local_dev",
-            "plan_name": "Local Development",
-            "minutes_limit": "no limit"
-        }
+    # Always return True for development purposes
+    logger.info("Billing checks are disabled for development")
+    return True, "Development mode - billing disabled", {
+        "price_id": "dev_mode",
+        "plan_name": "Development Mode",
+        "minutes_limit": "no limit"
+    }
     
     # Get current subscription
     subscription = await get_user_subscription(user_id)
