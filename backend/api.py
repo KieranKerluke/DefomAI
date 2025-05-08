@@ -86,6 +86,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/")
+async def root():
+    return {"message": "Welcome to DefomAI API. Please use /api/* endpoints."}
+
 @app.middleware("http")
 async def log_requests_middleware(request: Request, call_next):
     start_time = time.time()
