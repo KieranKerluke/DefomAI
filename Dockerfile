@@ -4,7 +4,7 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     ENV_MODE="production" \
-    PYTHONPATH=/app
+    PYTHONPATH=/app/backend
 
 WORKDIR /app
 
@@ -16,18 +16,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create non-root user and set up directories
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app/logs && \
+    mkdir -p /app/backend/logs && \
     chown -R appuser:appuser /app
 
-# Install Python dependencies
-COPY --chown=appuser:appuser requirements.txt .
+# Copy requirements file first for better caching
+COPY --chown=appuser:appuser backend/requirements.txt /app/backend/
+WORKDIR /app/backend
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Switch to non-root user
 USER appuser
 
-# Copy application code
-COPY --chown=appuser:appuser . .
+# Copy backend application code
+COPY --chown=appuser:appuser backend/ /app/backend/
 
 # Expose the port the app runs on
 EXPOSE ${PORT:-8000}

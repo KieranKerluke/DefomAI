@@ -14,12 +14,12 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/.env:/app/.env:ro
+      - ./backend/.env:/app/backend/.env:ro
     environment:
       - ENV_MODE=local
       - REDIS_HOST=redis
