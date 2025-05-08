@@ -1,18 +1,13 @@
 import { createBrowserClient } from '@supabase/ssr';
 
 export const createClient = () => {
-  // Get URL and key from environment variables
-  let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabaseUrl = 'https://dxclumbzndzxztkounbw.supabase.co';
+  const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4Y2x1bWJ6bmR6eHp0a291bmJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY1NzYzODAsImV4cCI6MjA2MjE1MjM4MH0.HfliizteRVoBVASO9MD0_RT2pdZWRqImIywsWMjOMes';
 
-  // Ensure the URL is in the proper format with http/https protocol
-  if (supabaseUrl && !supabaseUrl.startsWith('http')) {
-    // If it's just a hostname without protocol, add http://
-    supabaseUrl = `http://${supabaseUrl}`;
+  try {
+    return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  } catch (error) {
+    console.error('Error creating Supabase client:', error);
+    throw error;
   }
-
-  // console.log('Supabase URL:', supabaseUrl);
-  // console.log('Supabase Anon Key:', supabaseAnonKey);
-
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
 };

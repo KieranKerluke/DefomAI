@@ -82,25 +82,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <DeleteOperationProvider>
       <SidebarProvider>
-        <SidebarLeft />
-        <SidebarInset>
-          <div className="bg-background">{children}</div>
-        </SidebarInset>
-
-        {/* <PricingAlert 
-          open={showPricingAlert} 
-          onOpenChange={setShowPricingAlert}
-          closeable={false}
-          accountId={personalAccount?.account_id}
-          /> */}
-
-        <MaintenanceAlert
-          open={showMaintenanceAlert}
-          onOpenChange={setShowMaintenanceAlert}
-          closeable={true}
-        />
-
-        {/* Status overlay for deletion operations */}
+        <div className="flex h-screen">
+          <SidebarLeft />
+          <main className="flex-1 overflow-y-auto">
+            <MaintenanceAlert
+              open={showMaintenanceAlert}
+              onOpenChange={setShowMaintenanceAlert}
+              closeable={true}
+            />
+            <SidebarInset>{children}</SidebarInset>
+          </main>
+        </div>
         <StatusOverlay />
       </SidebarProvider>
     </DeleteOperationProvider>

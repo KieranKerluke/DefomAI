@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { PricingSection } from '@/components/home/sections/pricing-section';
-import { isLocalMode } from '@/lib/config';
+import { isLocalMode, config } from '@/lib/config';
 import {
   getSubscription,
   createPortalSession,
@@ -35,11 +35,17 @@ export default function AccountBillingStatus({ accountId, returnUrl }: Props) {
         setError(null);
       } catch (err) {
         console.error('Failed to get subscription:', err);
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Failed to load subscription data',
-        );
+        // Set default free tier subscription when API is not available
+        setSubscriptionData({
+          status: 'no_subscription',
+          plan_name: 'free',
+          price_id: config.SUBSCRIPTION_TIERS.FREE.priceId,
+          cancel_at_period_end: false,
+          has_schedule: false,
+          minutes_limit: 60, // Default free tier limit
+          current_usage: 0
+        });
+        setError(null); // Clear error since we're handling it gracefully
       } finally {
         setIsLoading(false);
       }

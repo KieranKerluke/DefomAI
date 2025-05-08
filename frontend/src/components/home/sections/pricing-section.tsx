@@ -23,7 +23,7 @@ import {
   CreateCheckoutSessionResponse,
 } from '@/lib/api';
 import { toast } from 'sonner';
-import { isLocalMode } from '@/lib/config';
+import { config } from '@/lib/config';
 
 // Constants
 const DEFAULT_SELECTED_PLAN = '6 hours';
@@ -625,8 +625,17 @@ export function PricingSection({
       setIsAuthenticated(true);
     } catch (error) {
       console.error('Error fetching subscription:', error);
-      setCurrentSubscription(null);
-      setIsAuthenticated(false);
+      // Set default free tier subscription when API is not available
+      setCurrentSubscription({
+        status: 'no_subscription',
+        plan_name: 'free',
+        price_id: config.SUBSCRIPTION_TIERS.FREE.priceId,
+        cancel_at_period_end: false,
+        has_schedule: false,
+        minutes_limit: 60, // Default free tier limit
+        current_usage: 0
+      });
+      setIsAuthenticated(true); // Allow access even without subscription data
     } finally {
       setIsFetchingPlan(false);
     }
@@ -665,16 +674,6 @@ export function PricingSection({
       setDeploymentType(tab);
     }
   };
-
-  if (isLocalMode()) {
-    return (
-      <div className="p-4 bg-muted/30 border border-border rounded-lg text-center">
-        <p className="text-sm text-muted-foreground">
-          Running in local development mode - billing features are disabled
-        </p>
-      </div>
-    );
-  }
 
   return (
     <section
