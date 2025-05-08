@@ -1,5 +1,6 @@
 [build]
 builder = "NIXPACKS"
+buildCommand = "pip install gunicorn uvicorn fastapi python-dotenv pydantic"
 
 [deploy]
 startCommand = "gunicorn api:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 600"
@@ -10,4 +11,5 @@ restartPolicyMaxRetries = 10
 
 [nixpacks]
 providers = ["python"]
+installCommand = "pip install -r requirements.txt && pip install gunicorn uvicorn"
 
