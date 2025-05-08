@@ -179,9 +179,22 @@ async def verify_thread_access(client, thread_id: str, user_id: str):
     account_id = thread_data.get('account_id')
     # When using service role, we need to manually check account membership instead of using current_user_account_role
     if account_id:
-        account_user_result = await client.schema('basejump').from_('account_user').select('account_role').eq('user_id', user_id).eq('account_id', account_id).execute()
-        if account_user_result.data and len(account_user_result.data) > 0:
-            return True
+        # Use the public schema instead of basejump
+        try:
+            # First try with public schema
+            account_user_result = await client.from_('account_user').select('account_role').eq('user_id', user_id).eq('account_id', account_id).execute()
+            if account_user_result.data and len(account_user_result.data) > 0:
+                return True
+        except Exception as e:
+            logger.warning(f"Error checking account membership in public schema: {str(e)}")
+            try:
+                # Fallback to checking if the user owns the thread directly
+                thread_owner_check = await client.from_('threads').select('created_by').eq('thread_id', thread_id).execute()
+                if thread_owner_check.data and len(thread_owner_check.data) > 0 and thread_owner_check.data[0].get('created_by') == user_id:
+                    return True
+            except Exception as e2:
+                logger.warning(f"Error checking thread ownership: {str(e2)}")
+                # Continue to the 403 error
     raise HTTPException(status_code=403, detail="Not authorized to access this thread")
 
 async def get_optional_user_id(request: Request) -> Optional[str]:
