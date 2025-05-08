@@ -2,12 +2,13 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "python -m uvicorn api:app --host 0.0.0.0 --port $PORT"
+startCommand = "apt-get update && apt-get install -y python3-pip && pip3 install uvicorn==0.27.1 fastapi==0.110.0 python-dotenv==1.0.0 pydantic requests && python3 -m uvicorn api:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 600
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 [nixpacks]
 providers = ["python"]
+installCommand = "pip install -r requirements.txt"
 
