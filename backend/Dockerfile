@@ -30,7 +30,7 @@ USER appuser
 COPY --chown=appuser:appuser . .
 
 # Expose the port the app runs on
-EXPOSE 8000
+EXPOSE ${PORT:-8000}
 
 # Calculate optimal worker count based on 16 vCPUs
 # Using (2*CPU)+1 formula for CPU-bound applications
@@ -42,7 +42,7 @@ ENV WORKER_CONNECTIONS=2000
 CMD ["sh", "-c", "gunicorn api:app \
      --workers $WORKERS \
      --worker-class uvicorn.workers.UvicornWorker \
-     --bind 0.0.0.0:8000 \
+     --bind 0.0.0.0:${PORT:-8000} \
      --timeout 600 \
      --graceful-timeout 300 \
      --keep-alive 250 \
