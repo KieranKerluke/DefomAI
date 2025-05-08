@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/client';
 
 // Get backend URL from environment variables
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+const API_URL = BASE_URL ? (BASE_URL.endsWith('/api') ? BASE_URL : `${BASE_URL}/api`) : '';
 
 // Set to keep track of agent runs that are known to be non-running
 const nonRunningAgentRuns = new Set<string>();

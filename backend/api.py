@@ -113,12 +113,17 @@ origins = [
     "http://localhost:3000",
     "https://localhost:3000",
     "https://defom-ai.vercel.app",
+    "http://defom-ai.vercel.app",
     "https://www.defom-ai.vercel.app",
+    "http://www.defom-ai.vercel.app",
     "https://defomai-backend-production.up.railway.app",
+    "http://defomai-backend-production.up.railway.app",
     # Also include the original allowed origins
     "https://www.suna.so", 
     "https://suna.so", 
-    "https://staging.suna.so"
+    "https://staging.suna.so",
+    # Allow all origins in development mode (can be removed in production)
+    "*"
     # Add any other frontend domains that need to access this API
 ]
 
