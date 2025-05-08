@@ -121,9 +121,7 @@ origins = [
     # Also include the original allowed origins
     "https://www.suna.so", 
     "https://suna.so", 
-    "https://staging.suna.so",
-    # Allow all origins in development mode (can be removed in production)
-    "*"
+    "https://staging.suna.so"
     # Add any other frontend domains that need to access this API
 ]
 
