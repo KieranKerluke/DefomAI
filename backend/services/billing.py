@@ -58,10 +58,15 @@ class SubscriptionStatus(BaseModel):
 # Helper functions
 async def get_stripe_customer_id(client, user_id: str) -> Optional[str]:
     """Get the Stripe customer ID for a user."""
-    result = await client.schema('basejump').from_('billing_customers') \
-        .select('id') \
-        .eq('account_id', user_id) \
-        .execute()
+    try:
+        # Use the public schema instead of basejump
+        result = await client.from_('billing_customers') \
+            .select('id') \
+            .eq('account_id', user_id) \
+            .execute()
+    except Exception as e:
+        logger.error(f"Error getting Stripe customer ID: {str(e)}")
+        return None
     
     if result.data and len(result.data) > 0:
         return result.data[0]['id']
@@ -76,12 +81,17 @@ async def create_stripe_customer(client, user_id: str, email: str) -> str:
     )
     
     # Store customer ID in Supabase
-    await client.schema('basejump').from_('billing_customers').insert({
-        'id': customer.id,
-        'account_id': user_id,
-        'email': email,
-        'provider': 'stripe'
-    }).execute()
+    try:
+        # Use the public schema instead of basejump
+        await client.from_('billing_customers').insert({
+            'id': customer.id,
+            'account_id': user_id,
+            'email': email,
+            'provider': 'stripe'
+        }).execute()
+    except Exception as e:
+        logger.error(f"Error storing Stripe customer ID: {str(e)}")
+        # Return the customer ID anyway since it was created in Stripe
     
     return customer.id
 
