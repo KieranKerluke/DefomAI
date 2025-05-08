@@ -1,2 +1,1 @@
-web: pip install -r requirements-railway.txt && python -c "import os, uvicorn; uvicorn.run('api:app', host='0.0.0.0', port=int(os.environ.get('PORT', 8000)))"
-
+web: apt-get update && apt-get install -y python3 python3-pip && pip3 install -r requirements.txt && python3 -m uvicorn api:app --host 0.0.0.0 --port $PORT
