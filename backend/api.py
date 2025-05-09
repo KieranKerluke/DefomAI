@@ -86,10 +86,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to DefomAI API. Please use /api/* endpoints."}
-
 @app.middleware("http")
 async def log_requests_middleware(request: Request, call_next):
     start_time = time.time()
@@ -112,40 +108,23 @@ async def log_requests_middleware(request: Request, call_next):
         logger.error(f"Request failed: {method} {path} | Error: {str(e)} | Time: {process_time:.2f}s")
         raise
 
-# CORS configuration with specific origins
-origins = [
-    "http://localhost:3000",
-    "https://localhost:3000",
-    "https://defom-ai.vercel.app",
-    "http://defom-ai.vercel.app",
-    "https://www.defom-ai.vercel.app",
-    "http://www.defom-ai.vercel.app",
-    "https://defomai-backend-production.up.railway.app",
-    "http://defomai-backend-production.up.railway.app",
-    # Also include the original allowed origins
-    "https://www.suna.so", 
-    "https://suna.so", 
-    "https://staging.suna.so"
-    # Add any other frontend domains that need to access this API
-]
+# Define allowed origins based on environment
+allowed_origins = ["https://www.defom-ai.vercel.app", "https://defom-ai.vercel.app"]
 
 # Add staging-specific origins
 if config.ENV_MODE == EnvMode.STAGING:
-    if "http://localhost:3000" not in origins:
-        origins.append("http://localhost:3000")
+    allowed_origins.append("http://localhost:3000")
     
 # Add local-specific origins
 if config.ENV_MODE == EnvMode.LOCAL:
-    if "http://localhost:3000" not in origins:
-        origins.append("http://localhost:3000")
+    allowed_origins.append("http://localhost:3000")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,  # Allow cookies to be sent with requests
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],  # Allow all headers
-    max_age=86400,  # Cache preflight requests for 24 hours
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Include the agent router with a prefix
@@ -157,13 +136,7 @@ app.include_router(sandbox_api.router, prefix="/api")
 # Include the billing router with a prefix
 app.include_router(billing_api.router, prefix="/api")
 
-# OPTIONS requests are handled by FastAPI's CORSMiddleware
 
-@app.get("/api/cors-test")
-async def cors_test():
-    """Test endpoint to verify CORS configuration."""
-    logger.info("CORS test endpoint called")
-    return {"message": "CORS is working!", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/api/health")
 async def health_check():
@@ -186,5 +159,5 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=8000,
         workers=workers,
-        reload=True
+        # reload=True
     )
