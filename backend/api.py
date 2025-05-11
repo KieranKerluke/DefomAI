@@ -87,6 +87,31 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
+async def custom_cors_middleware(request: Request, call_next):
+    # Handle preflight requests
+    if request.method == "OPTIONS":
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "86400"
+        return response
+
+    # Process the request
+    try:
+        response = await call_next(request)
+        
+        # Add CORS headers to all responses
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
+    except Exception as e:
+        logger.error(f"Request error: {str(e)}")
+        raise
+
+@app.middleware("http")
 async def log_requests_middleware(request: Request, call_next):
     start_time = time.time()
     client_ip = request.client.host
@@ -109,6 +134,11 @@ async def log_requests_middleware(request: Request, call_next):
         raise
 
 # Define allowed origins based on environment
+# For now, allow all origins to troubleshoot CORS issues
+allowed_origins = ["*"]
+
+# Original configuration (commented out for now)
+'''
 allowed_origins = [
     "https://www.defom-ai.vercel.app", 
     "https://defom-ai.vercel.app",
@@ -123,6 +153,7 @@ if config.ENV_MODE == EnvMode.STAGING:
 # Add local-specific origins
 if config.ENV_MODE == EnvMode.LOCAL:
     allowed_origins.append("http://localhost:3000")
+'''
 
 # For development, you might want to allow all origins
 # Uncomment the next line if needed during development
