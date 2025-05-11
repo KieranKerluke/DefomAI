@@ -166,7 +166,13 @@ export function FileViewerModal({
 
   // Navigate to a specific path in the breadcrumb
   const navigateToBreadcrumb = useCallback(
-    (path: string) => {
+    (path: string | React.MouseEvent) => {
+      // Handle case where a click event is passed instead of a string path
+      if (typeof path !== 'string') {
+        console.warn('[FILE VIEWER] Received click event instead of path string');
+        return;
+      }
+      
       const normalizedPath = normalizePath(path);
       console.log(
         `[FILE VIEWER] Navigating to breadcrumb path: ${path} → ${normalizedPath}`,

@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import AIAccessCheck from '@/components/activation/AIAccessCheck';
 
 export const metadata: Metadata = {
   title: 'Agent Conversation | Kortix Suna',
@@ -15,5 +16,5 @@ export default function AgentsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return <AIAccessCheck>{children}</AIAccessCheck>;
 }

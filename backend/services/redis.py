@@ -5,9 +5,11 @@ import asyncio
 from utils.logger import logger
 from typing import List, Any, Optional
 import time
+import backoff
 
 # Redis client
 client = None
+_pool = None
 _initialized = False
 _init_lock = asyncio.Lock()
 _last_connection_attempt = 0
@@ -15,12 +17,13 @@ _connection_retry_delay = 5  # seconds
 
 # Constants
 REDIS_KEY_TTL = 3600 * 24  # 24 hour TTL as safety mechanism
-MAX_RECONNECT_ATTEMPTS = 3
+MAX_RECONNECT_ATTEMPTS = 5  # Increased from 3
+CONNECTION_TIMEOUT = 10.0  # Increased timeout
 
 
 def initialize():
     """Initialize Redis connection using environment variables."""
-    global client
+    global client, _pool
 
     # Load environment variables if not already loaded
     load_dotenv()
@@ -32,28 +35,35 @@ def initialize():
     # Convert string 'True'/'False' to boolean
     redis_ssl_str = os.getenv('REDIS_SSL', 'False')
     redis_ssl = redis_ssl_str.lower() == 'true'
+    redis_db = int(os.getenv('REDIS_DB', '0'))
 
-    logger.info(f"Initializing Redis connection to {redis_host}:{redis_port}")
+    logger.info(f"Initializing Redis connection pool to {redis_host}:{redis_port}")
 
-    # Create Redis client with basic configuration
-    client = redis.Redis(
+    # Create a connection pool
+    _pool = redis.ConnectionPool(
         host=redis_host,
         port=redis_port,
         password=redis_password,
         ssl=redis_ssl,
+        db=redis_db,
         decode_responses=True,
-        socket_timeout=5.0,
-        socket_connect_timeout=5.0,
+        socket_timeout=CONNECTION_TIMEOUT,
+        socket_connect_timeout=CONNECTION_TIMEOUT,
+        socket_keepalive=True,
         retry_on_timeout=True,
-        health_check_interval=30
+        health_check_interval=30,
+        max_connections=20  # Increase max connections
     )
+
+    # Create Redis client from the pool
+    client = redis.Redis(connection_pool=_pool)
 
     return client
 
 
 async def initialize_async():
-    """Initialize Redis connection asynchronously."""
-    global client, _initialized, _last_connection_attempt
+    """Initialize Redis connection asynchronously with retry logic."""
+    global client, _initialized, _last_connection_attempt, _pool
 
     # Rate limit connection attempts
     current_time = time.time()
@@ -68,15 +78,28 @@ async def initialize_async():
 
     async with _init_lock:
         if not _initialized:
-            logger.info("Initializing Redis connection")
+            logger.info("Initializing Redis connection with retry logic")
             initialize()
 
+            # Define exponential backoff for retries
+            @backoff.on_exception(
+                backoff.expo,
+                (redis.ConnectionError, redis.TimeoutError),
+                max_tries=MAX_RECONNECT_ATTEMPTS,
+                max_time=30,  # Max 30 seconds of retry attempts
+                on_backoff=lambda details: logger.warning(
+                    f"Redis connection attempt {details['tries']} failed. Retrying in {details['wait']:.2f} seconds..."
+                )
+            )
+            async def try_ping():
+                return await client.ping()
+
             try:
-                await client.ping()
+                await try_ping()
                 logger.info("Successfully connected to Redis")
                 _initialized = True
             except Exception as e:
-                logger.error(f"Failed to connect to Redis: {e}")
+                logger.error(f"All Redis connection attempts failed: {e}")
                 client = None
                 # Don't raise the exception, just return None
                 return None
@@ -97,7 +120,7 @@ async def close():
 
 async def get_client():
     """Get the Redis client, initializing if necessary."""
-    global client, _initialized
+    global client, _initialized, _pool
     
     # If we already have a working client, return it
     if client is not None and _initialized:
@@ -105,26 +128,34 @@ async def get_client():
             # Quick check to see if connection is still alive
             await client.ping()
             return client
-        except Exception as e:
+        except (redis.ConnectionError, redis.TimeoutError) as e:
             logger.warning(f"Redis connection check failed: {e}")
             _initialized = False
-    
-    # Try to initialize or reconnect
-    for attempt in range(MAX_RECONNECT_ATTEMPTS):
-        try:
-            redis_client = await initialize_async()
-            if redis_client is not None:
-                return redis_client
-            
-            # If initialization returned None, wait before retrying
-            await asyncio.sleep(_connection_retry_delay)
         except Exception as e:
-            logger.error(f"Redis reconnection attempt {attempt+1}/{MAX_RECONNECT_ATTEMPTS} failed: {e}")
-            await asyncio.sleep(_connection_retry_delay)
+            logger.error(f"Unexpected Redis error: {e}")
+            _initialized = False
     
-    # If we get here, all reconnection attempts failed
-    logger.error(f"All Redis reconnection attempts failed after {MAX_RECONNECT_ATTEMPTS} tries")
-    return None
+    # Try to initialize or reconnect with exponential backoff
+    @backoff.on_exception(
+        backoff.expo,
+        (redis.ConnectionError, redis.TimeoutError),
+        max_tries=MAX_RECONNECT_ATTEMPTS,
+        max_time=30,  # Max 30 seconds of retry attempts
+        on_backoff=lambda details: logger.warning(
+            f"Redis reconnection attempt {details['tries']} failed. Retrying in {details['wait']:.2f} seconds..."
+        )
+    )
+    async def try_reconnect():
+        redis_client = await initialize_async()
+        if redis_client is None:
+            raise redis.ConnectionError("Failed to initialize Redis client")
+        return redis_client
+    
+    try:
+        return await try_reconnect()
+    except Exception as e:
+        logger.error(f"All Redis reconnection attempts failed: {e}")
+        return None
 
 
 # Basic Redis operations
@@ -182,15 +213,32 @@ async def publish(channel: str, message: str):
 
 
 async def create_pubsub():
-    """Create a Redis pubsub object."""
+    """Create a Redis pubsub object with retry logic."""
     redis_client = await get_client()
     if redis_client is None:
         logger.warning("Cannot create Redis pubsub: client is None")
         return None
+        
+    @backoff.on_exception(
+        backoff.expo,
+        (redis.ConnectionError, redis.TimeoutError),
+        max_tries=3,
+        max_time=15,  # Max 15 seconds of retry attempts
+    )
+    async def create_pubsub_with_retry():
+        try:
+            pubsub = redis_client.pubsub()
+            # Test the pubsub connection
+            await pubsub.ping()
+            return pubsub
+        except Exception as e:
+            logger.error(f"Error creating Redis pubsub: {e}")
+            raise
+            
     try:
-        return redis_client.pubsub()
+        return await create_pubsub_with_retry()
     except Exception as e:
-        logger.error(f"Error creating Redis pubsub: {e}")
+        logger.error(f"All attempts to create pubsub failed: {e}")
         return None
 
 

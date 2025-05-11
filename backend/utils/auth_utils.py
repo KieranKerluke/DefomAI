@@ -4,6 +4,7 @@ import jwt
 from jwt.exceptions import PyJWTError
 from utils.logger import logger
 from utils.config import config, EnvMode
+from services.supabase import DBConnection
 
 # This function extracts the user ID from Supabase JWT
 async def get_current_user_id_from_jwt(request: Request) -> str:
@@ -253,6 +254,126 @@ async def get_optional_user_id(request: Request) -> Optional[str]:
         # Supabase stores the user ID in the 'sub' claim
         user_id = payload.get('sub')
         
+        if not user_id:
+            return None
+        
         return user_id
+        
     except PyJWTError:
         return None
+
+async def get_user_from_request(request: Request) -> Optional[Dict[str, Any]]:
+    """
+    Extract user information from the JWT in the Authorization header.
+    Returns user data including id, email, and metadata.
+    
+    Args:
+        request: The FastAPI request object
+        
+    Returns:
+        Optional[Dict[str, Any]]: User data or None if no valid token
+    """
+    user_id = await get_optional_user_id(request)
+    if not user_id:
+        return None
+    
+    db = DBConnection()
+    try:
+        # Get user data from Supabase auth.users table
+        user_data = await db.fetch_one(
+            """
+            SELECT 
+                id, 
+                email, 
+                raw_app_meta_data->>'is_admin' as is_admin,
+                raw_app_meta_data->>'has_ai_access' as has_ai_access,
+                created_at,
+                last_sign_in_at
+            FROM auth.users
+            WHERE id = $1
+            """,
+            user_id
+        )
+        
+        if not user_data:
+            return None
+        
+        # Convert string 'true'/'false' to boolean
+        if user_data.get('is_admin') == 'true':
+            user_data['is_admin'] = True
+        else:
+            user_data['is_admin'] = False
+            
+        if user_data.get('has_ai_access') == 'true':
+            user_data['has_ai_access'] = True
+        else:
+            user_data['has_ai_access'] = False
+        
+        return user_data
+    except Exception as e:
+        logger.error(f"Error getting user data: {str(e)}")
+        return None
+
+async def admin_required(request: Request) -> Dict[str, Any]:
+    """
+    Dependency that ensures the user is an admin.
+    Raises HTTPException if not authenticated or not an admin.
+    
+    Args:
+        request: The FastAPI request object
+        
+    Returns:
+        Dict[str, Any]: User data if admin
+        
+    Raises:
+        HTTPException: If not authenticated or not an admin
+    """
+    user = await get_user_from_request(request)
+    
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    if not user.get('is_admin'):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required"
+        )
+    
+    return user
+
+async def ai_access_required(request: Request) -> Dict[str, Any]:
+    """
+    Dependency that ensures the user has AI access.
+    Admins automatically have AI access.
+    Raises HTTPException if not authenticated or no AI access.
+    
+    Args:
+        request: The FastAPI request object
+        
+    Returns:
+        Dict[str, Any]: User data if has AI access
+        
+    Raises:
+        HTTPException: If not authenticated or no AI access
+    """
+    user = await get_user_from_request(request)
+    
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Admins automatically have AI access
+    if user.get('is_admin') or user.get('has_ai_access'):
+        return user
+    
+    raise HTTPException(
+        status_code=403,
+        detail="AI access required. Please activate your account with an access code."
+    )

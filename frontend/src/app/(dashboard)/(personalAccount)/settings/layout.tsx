@@ -13,7 +13,8 @@ export default function PersonalAccountSettingsPage({
   const items = [
     // { name: "Profile", href: "/settings" },
     // { name: "Teams", href: "/settings/teams" },
-    { name: 'Billing', href: '/settings/billing' },
+    // Billing removed - all features are now free
+    // { name: 'Billing', href: '/settings/billing' },
   ];
   return (
     <div className="space-y-6 w-full">

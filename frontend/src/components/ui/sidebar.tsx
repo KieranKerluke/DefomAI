@@ -138,6 +138,8 @@ function SidebarProvider({
               ...style,
             } as React.CSSProperties
           }
+          // Prevent aria-hidden conflicts with focused elements
+          data-aria-hidden="false"
           className={cn(
             'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full',
             className,

@@ -538,18 +538,106 @@ async def stream_agent_run(
             message_queue = asyncio.Queue()
 
             async def listen_messages():
-                response_reader = pubsub_response.listen()
-                control_reader = pubsub_control.listen()
-                tasks = [asyncio.create_task(response_reader.__anext__()), asyncio.create_task(control_reader.__anext__())]
-
-                while not terminate_stream:
-                    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                    for task in done:
+                try:
+                    response_reader = pubsub_response.listen()
+                    control_reader = pubsub_control.listen()
+                    
+                    # Wrap the async generators in safer task handlers
+                    async def safe_next(reader, channel_name):
                         try:
-                            message = task.result()
-                            if message and isinstance(message, dict) and message.get("type") == "message":
-                                channel = message.get("channel")
-                                data = message.get("data")
+                            return await reader.__anext__()
+                        except StopAsyncIteration:
+                            logger.warning(f"{channel_name} listener stopped with StopAsyncIteration")
+                            # This is expected when Redis connection closes
+                            # Return a special value to indicate we need to reconnect
+                            return {"__reconnect__": True, "channel": channel_name}
+                        except redis.ConnectionError as e:
+                            logger.warning(f"{channel_name} listener connection error: {e}")
+                            return {"__reconnect__": True, "channel": channel_name}
+                        except Exception as e:
+                            logger.error(f"Unexpected error in {channel_name} listener: {e}")
+                            return {"__error__": str(e), "channel": channel_name}
+                    
+                    response_task = asyncio.create_task(safe_next(response_reader, "response"))
+                    control_task = asyncio.create_task(safe_next(control_reader, "control"))
+                    tasks = [response_task, control_task]
+                    
+                    reconnect_count = 0
+                    max_reconnects = 5
+                    
+                    while not terminate_stream and reconnect_count < max_reconnects:
+                        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                        
+                        for task in done:
+                            result = task.result()
+                            
+                            # Handle reconnection signal
+                            if isinstance(result, dict) and result.get("__reconnect__"):
+                                channel_name = result.get("channel")
+                                logger.info(f"Reconnecting to {channel_name} channel")
+                                reconnect_count += 1
+                                
+                                # Attempt to recreate the pubsub connection
+                                if channel_name == "response":
+                                    try:
+                                        # Close the old pubsub if possible
+                                        try:
+                                            await pubsub_response.close()
+                                        except:
+                                            pass
+                                            
+                                        # Create a new pubsub
+                                        pubsub_response = await redis.create_pubsub()
+                                        if pubsub_response:
+                                            await pubsub_response.subscribe(response_channel)
+                                            response_reader = pubsub_response.listen()
+                                            tasks.remove(task)
+                                            tasks.append(asyncio.create_task(safe_next(response_reader, "response")))
+                                            logger.info(f"Successfully reconnected to response channel")
+                                            reconnect_count = 0  # Reset counter on successful reconnect
+                                        else:
+                                            await message_queue.put({"type": "error", "data": "Failed to reconnect to Redis"})
+                                            return
+                                    except Exception as e:
+                                        logger.error(f"Failed to reconnect to response channel: {e}")
+                                        await message_queue.put({"type": "error", "data": "Redis reconnection failed"})
+                                        return
+                                elif channel_name == "control":
+                                    try:
+                                        # Close the old pubsub if possible
+                                        try:
+                                            await pubsub_control.close()
+                                        except:
+                                            pass
+                                            
+                                        # Create a new pubsub
+                                        pubsub_control = await redis.create_pubsub()
+                                        if pubsub_control:
+                                            await pubsub_control.subscribe(control_channel)
+                                            control_reader = pubsub_control.listen()
+                                            tasks.remove(task)
+                                            tasks.append(asyncio.create_task(safe_next(control_reader, "control")))
+                                            logger.info(f"Successfully reconnected to control channel")
+                                            reconnect_count = 0  # Reset counter on successful reconnect
+                                        else:
+                                            await message_queue.put({"type": "error", "data": "Failed to reconnect to Redis"})
+                                            return
+                                    except Exception as e:
+                                        logger.error(f"Failed to reconnect to control channel: {e}")
+                                        await message_queue.put({"type": "error", "data": "Redis reconnection failed"})
+                                        return
+                                continue
+                            
+                            # Handle error signal
+                            if isinstance(result, dict) and result.get("__error__"):
+                                logger.error(f"Error in listener: {result.get('__error__')}")
+                                await message_queue.put({"type": "error", "data": "Listener error"})
+                                continue
+                                
+                            # Handle normal message
+                            if result and isinstance(result, dict) and result.get("type") == "message":
+                                channel = result.get("channel")
+                                data = result.get("data")
                                 if isinstance(data, bytes): data = data.decode('utf-8')
 
                                 if channel == response_channel and data == "new":
@@ -558,27 +646,37 @@ async def stream_agent_run(
                                     logger.info(f"Received control signal '{data}' for {agent_run_id}")
                                     await message_queue.put({"type": "control", "data": data})
                                     return # Stop listening on control signal
-
-                        except StopAsyncIteration:
-                            logger.warning(f"Listener {task} stopped.")
-                            # Decide how to handle listener stopping, maybe terminate?
-                            await message_queue.put({"type": "error", "data": "Listener stopped unexpectedly"})
-                            return
-                        except Exception as e:
-                            logger.error(f"Error in listener for {agent_run_id}: {e}")
-                            await message_queue.put({"type": "error", "data": "Listener failed"})
-                            return
-                        finally:
-                            # Reschedule the completed listener task
+                            
+                            # Reschedule the task
                             if task in tasks:
                                 tasks.remove(task)
-                                if message and isinstance(message, dict) and message.get("channel") == response_channel:
-                                     tasks.append(asyncio.create_task(response_reader.__anext__()))
-                                elif message and isinstance(message, dict) and message.get("channel") == control_channel:
-                                     tasks.append(asyncio.create_task(control_reader.__anext__()))
-
-                # Cancel pending listener tasks on exit
-                for p_task in pending: p_task.cancel()
+                                if task == response_task:
+                                    response_task = asyncio.create_task(safe_next(response_reader, "response"))
+                                    tasks.append(response_task)
+                                elif task == control_task:
+                                    control_task = asyncio.create_task(safe_next(control_reader, "control"))
+                                    tasks.append(control_task)
+                    
+                    # If we've reached max reconnects, inform the client
+                    if reconnect_count >= max_reconnects:
+                        logger.error(f"Exceeded maximum Redis reconnection attempts for {agent_run_id}")
+                        await message_queue.put({"type": "error", "data": "Too many Redis reconnection attempts"})
+                    
+                    # Cancel pending tasks on exit
+                    for p_task in pending: 
+                        p_task.cancel()
+                        
+                except Exception as e:
+                    logger.error(f"Unhandled exception in listen_messages for {agent_run_id}: {e}")
+                    await message_queue.put({"type": "error", "data": "Internal server error"})
+                    # Ensure we clean up resources
+                    try:
+                        if pubsub_response:
+                            await pubsub_response.close()
+                        if pubsub_control:
+                            await pubsub_control.close()
+                    except:
+                        pass
                 for task in tasks: task.cancel()
 
 

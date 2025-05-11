@@ -40,6 +40,7 @@ import Link from "next/link"
 import { ShareModal } from "./share-modal"
 import { DeleteConfirmationDialog } from "@/components/thread/DeleteConfirmationDialog"
 import { useDeleteOperation } from '@/contexts/DeleteOperationContext'
+import { AdminNavItem } from './AdminNavItem'
 
 // Thread with associated project info for display in sidebar
 type ThreadWithProject = {
@@ -293,14 +294,17 @@ export function NavAgents() {
           </Tooltip>
         ) : null}
       </div>
-
-      <SidebarMenu className="overflow-y-auto max-h-[calc(100vh-200px)] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+      
+      <SidebarMenu>
+        <AdminNavItem />
+        
+        {/* New Agent button for collapsed state */}
         {state === 'collapsed' && (
           <SidebarMenuItem>
             <Tooltip>
               <TooltipTrigger asChild>
                 <SidebarMenuButton asChild>
-                  <Link href="/dashboard" className="flex items-center">
+                  <Link href="/agents/new" className="flex items-center">
                     <Plus className="h-4 w-4" />
                     <span>New Agent</span>
                   </Link>
