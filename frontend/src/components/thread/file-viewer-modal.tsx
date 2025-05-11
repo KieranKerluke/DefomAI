@@ -188,7 +188,7 @@ export function FileViewerModal({
   const getBreadcrumbSegments = useCallback(
     (path: string) => {
       // Ensure we're working with a normalized path
-      const normalizedPath = normalizePath(path);
+      const normalizedPath = typeof path === 'string' ? normalizePath(path) : '';
 
       // Remove /workspace prefix and split by /
       const cleanPath = normalizedPath.replace(/^\/workspace\/?/, '');
