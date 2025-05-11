@@ -59,7 +59,11 @@ async def lifespan(app: FastAPI):
             logger.info("Redis connection initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Redis connection: {e}")
+            logger.warning("Continuing without Redis - some features may be limited")
             # Continue without Redis - the application will handle Redis failures gracefully
+            # Set a flag to indicate Redis is not available
+            redis._initialized = False
+            redis.client = None
         
         # Start background tasks
         asyncio.create_task(agent_api.restore_running_agent_runs())

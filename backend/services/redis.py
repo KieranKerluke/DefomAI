@@ -39,21 +39,29 @@ def initialize():
 
     logger.info(f"Initializing Redis connection pool to {redis_host}:{redis_port}")
 
-    # Create a connection pool
-    _pool = redis.ConnectionPool(
-        host=redis_host,
-        port=redis_port,
-        password=redis_password,
-        ssl=redis_ssl,
-        db=redis_db,
-        decode_responses=True,
-        socket_timeout=CONNECTION_TIMEOUT,
-        socket_connect_timeout=CONNECTION_TIMEOUT,
-        socket_keepalive=True,
-        retry_on_timeout=True,
-        health_check_interval=30,
-        max_connections=20  # Increase max connections
-    )
+    # Create a connection pool with conditional SSL parameters
+    pool_params = {
+        "host": redis_host,
+        "port": redis_port,
+        "password": redis_password,
+        "db": redis_db,
+        "decode_responses": True,
+        "socket_timeout": CONNECTION_TIMEOUT,
+        "socket_connect_timeout": CONNECTION_TIMEOUT,
+        "socket_keepalive": True,
+        "retry_on_timeout": True,
+        "health_check_interval": 30,
+        "max_connections": 20  # Increase max connections
+    }
+    
+    # Only add SSL parameter if it's enabled
+    # This avoids issues with some Redis implementations
+    if redis_ssl:
+        logger.info("Using SSL for Redis connection")
+        pool_params["ssl"] = True
+        
+    # Create the connection pool with the appropriate parameters
+    _pool = redis.ConnectionPool(**pool_params)
 
     # Create Redis client from the pool
     client = redis.Redis(connection_pool=_pool)
@@ -98,6 +106,14 @@ async def initialize_async():
                 await try_ping()
                 logger.info("Successfully connected to Redis")
                 _initialized = True
+            except redis.ConnectionError as e:
+                logger.error(f"Redis connection error: {str(e)}")
+                _initialized = False
+                raise
+            except redis.RedisError as e:
+                logger.error(f"Redis error: {str(e)}")
+                _initialized = False
+                raise
             except Exception as e:
                 logger.error(f"All Redis connection attempts failed: {e}")
                 client = None
@@ -119,21 +135,21 @@ async def close():
 
 
 async def get_client():
-    """Get the Redis client, initializing if necessary."""
-    global client, _initialized, _pool
+    """Get the Redis client, initializing if necessary.
     
-    # If we already have a working client, return it
+    Returns:
+        Redis client or None if initialization failed
+    """
+    global client, _initialized
+    
     if client is not None and _initialized:
-        try:
-            # Quick check to see if connection is still alive
-            await client.ping()
-            return client
-        except (redis.ConnectionError, redis.TimeoutError) as e:
-            logger.warning(f"Redis connection check failed: {e}")
-            _initialized = False
-        except Exception as e:
-            logger.error(f"Unexpected Redis error: {e}")
-            _initialized = False
+        return client
+        
+    # If we've already tried and failed to initialize, don't keep trying
+    # This prevents repeated connection attempts that will fail
+    if client is None and _initialized is False:
+        logger.debug("Redis is marked as unavailable, skipping connection attempt")
+        return None
     
     # Try to initialize or reconnect with exponential backoff
     @backoff.on_exception(
@@ -160,13 +176,18 @@ async def get_client():
 
 # Basic Redis operations
 async def set(key: str, value: str, ex: int = None):
-    """Set a Redis key."""
+    """Set a Redis key.
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
     redis_client = await get_client()
-    if redis_client is None:
-        logger.warning(f"Cannot set Redis key {key}: client is None")
+    if not redis_client:
+        logger.debug(f"Redis unavailable, couldn't set key: {key}")
         return False
+    
     try:
-        return await redis_client.set(key, value, ex=ex)
+        return await redis_client.set(key, value, ex=ex or REDIS_KEY_TTL)
     except Exception as e:
         logger.error(f"Error setting Redis key {key}: {e}")
         return False
