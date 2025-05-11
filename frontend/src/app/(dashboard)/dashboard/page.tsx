@@ -205,7 +205,7 @@ function DashboardContent() {
         </div>
       )}
 
-      <div className="w-[650px] max-w-[90%] mx-auto" style={{ marginTop: '-10vh' }}>
+      <div className="w-[650px] max-w-[90%]" style={{ marginTop: '-10vh', marginLeft: 'calc(50% + 40px)', transform: 'translateX(-50%)' }}>
         <div className="flex flex-col items-center text-center mb-2 w-full">
           <h1 className={cn('tracking-tight text-4xl font-semibold leading-tight')}>
             Hey
