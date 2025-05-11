@@ -214,28 +214,17 @@ function DashboardContent() {
             What would you like Suna to do today?
           </p>
         </div>
-
-        <div className="mx-auto w-full max-w-4xl px-4">
-          <div data-slot="card" className="text-card-foreground flex flex-col gap-6 border py-6 shadow-none w-full max-w-4xl mx-auto bg-transparent border-none rounded-xl overflow-hidden">
-            <div className="w-full text-sm flex flex-col justify-between items-start rounded-lg">
-              <div data-slot="card-content" className="w-full p-1.5 pb-2 pt-3 bg-sidebar rounded-2xl border">
-                <div className="flex flex-col w-full h-auto gap-4 justify-between">
-                  <div className="flex gap-2 items-center px-2">
-                    <ChatInput
-                      ref={chatInputRef}
-                      onSubmit={handleSubmit}
-                      loading={isSubmitting}
-                      placeholder="Describe what you need help with..."
-                      value={inputValue}
-                      onChange={setInputValue}
-                      hideAttachments={false}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        
+        {/* Chat input component - Do not modify this structure */}
+        <ChatInput
+          ref={chatInputRef}
+          onSubmit={handleSubmit}
+          loading={isSubmitting}
+          placeholder="Describe what you need help with..."
+          value={inputValue}
+          onChange={setInputValue}
+          hideAttachments={false}
+        />
       </div>
 
       {/* Billing Error Alert */}
