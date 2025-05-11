@@ -185,7 +185,7 @@ function DashboardContent() {
   }, [autoSubmit, inputValue, isSubmitting]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen w-full">
+    <div className="flex flex-col items-center justify-center h-full w-full">
       {isMobile && (
         <div className="absolute top-4 left-4 z-10">
           <Tooltip>
@@ -205,7 +205,7 @@ function DashboardContent() {
         </div>
       )}
 
-      <div className="w-[650px] max-w-[90%]" style={{ marginTop: '-10vh', marginLeft: 'calc(50% + 40px)', transform: 'translateX(-50%)' }}>
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[650px] max-w-[90%]">
         <div className="flex flex-col items-center text-center mb-2 w-full">
           <h1 className={cn('tracking-tight text-4xl font-semibold leading-tight')}>
             Hey
@@ -215,15 +215,27 @@ function DashboardContent() {
           </p>
         </div>
 
-        <ChatInput
-          ref={chatInputRef}
-          onSubmit={handleSubmit}
-          loading={isSubmitting}
-          placeholder="Describe what you need help with..."
-          value={inputValue}
-          onChange={setInputValue}
-          hideAttachments={false}
-        />
+        <div className="mx-auto w-full max-w-4xl px-4">
+          <div data-slot="card" className="text-card-foreground flex flex-col gap-6 border py-6 shadow-none w-full max-w-4xl mx-auto bg-transparent border-none rounded-xl overflow-hidden">
+            <div className="w-full text-sm flex flex-col justify-between items-start rounded-lg">
+              <div data-slot="card-content" className="w-full p-1.5 pb-2 pt-3 bg-sidebar rounded-2xl border">
+                <div className="flex flex-col w-full h-auto gap-4 justify-between">
+                  <div className="flex gap-2 items-center px-2">
+                    <ChatInput
+                      ref={chatInputRef}
+                      onSubmit={handleSubmit}
+                      loading={isSubmitting}
+                      placeholder="Describe what you need help with..."
+                      value={inputValue}
+                      onChange={setInputValue}
+                      hideAttachments={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Billing Error Alert */}
