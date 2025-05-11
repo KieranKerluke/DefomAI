@@ -185,7 +185,7 @@ function DashboardContent() {
   }, [autoSubmit, inputValue, isSubmitting]);
 
   return (
-    <div className="grid h-full w-full place-items-center">
+    <div className="flex flex-col items-center justify-center h-screen w-full">
       {isMobile && (
         <div className="absolute top-4 left-4 z-10">
           <Tooltip>
@@ -205,7 +205,7 @@ function DashboardContent() {
         </div>
       )}
 
-      <div className="w-[650px] max-w-[90%]">
+      <div className="w-[650px] max-w-[90%] mx-auto" style={{ marginTop: '-10vh' }}>
         <div className="flex flex-col items-center text-center mb-2 w-full">
           <h1 className={cn('tracking-tight text-4xl font-semibold leading-tight')}>
             Hey
