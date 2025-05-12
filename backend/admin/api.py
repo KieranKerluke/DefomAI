@@ -50,96 +50,13 @@ async def generate_activation_code(request: Request, admin_user=Depends(admin_re
         logger.error(f"Failed to generate code: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate activation code: {str(e)}")
 
-@router.post("/activate-ai")
-async def activate_ai(request: Request):
-    """
-    Activate AI access for a user using an activation code.
-    """
-    user = await get_user_from_request(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    # Get the code from the request body
-    data = await request.json()
-    code = data.get("code")
-    
-    if not code:
-        raise HTTPException(status_code=400, detail="Activation code is required")
-    
-    try:
-        # Get Supabase client
-        client = await db.client
-        
-        # Check for the activation code directly
-        try:
-            code_result = await client.from_("ai_activation_codes") \
-                .select("id") \
-                .eq("code_value", code) \
-                .eq("is_active", True) \
-                .eq("is_claimed", False) \
-                .execute()
-            
-            # Check if there's data in the response
-            if hasattr(code_result, 'data') and code_result.data and len(code_result.data) > 0:
-                code_record = code_result.data[0]
-            else:
-                code_record = None
-        except Exception as e:
-            logger.error(f"Error checking activation code: {e}")
-            raise Exception(f"Failed to verify activation code: {str(e)}")
-        
-        if not code_record:
-            return {"success": False, "message": "Invalid or already claimed code"}
-        
-        # Mark code as claimed
-        try:
-            update_result = await client.from_("ai_activation_codes") \
-                .update({
-                    "is_claimed": True,
-                    "claimed_by_user_id": user["id"],
-                    "claimed_at": datetime.now().isoformat()
-                }) \
-                .eq("id", code_record["id"]) \
-                .execute()
-                
-            # Check for errors in the response
-            if hasattr(update_result, 'error') and update_result.error:
-                raise Exception(f"Supabase error: {update_result.error}")
-        except Exception as e:
-            logger.error(f"Error marking code as claimed: {e}")
-            raise Exception(f"Failed to mark activation code as claimed: {str(e)}")
-        
-        # Update user's AI access using the auth admin API
-        try:
-            # Get current user data first
-            user_response = await client.auth.admin.get_user_by_id(user["id"])
-            if user_response and hasattr(user_response, 'user') and user_response.user:
-                current_user = user_response.user
-                
-                # Update app metadata
-                app_metadata = current_user.app_metadata or {}
-                app_metadata["has_ai_access"] = True
-                
-                # Update the user with new metadata
-                update_response = await client.auth.admin.update_user_by_id(
-                    user["id"],
-                    {"app_metadata": app_metadata}
-                )
-                
-                # Check for errors in the response
-                if hasattr(update_response, 'error') and update_response.error:
-                    raise Exception(f"Supabase auth error: {update_response.error}")
-            else:
-                logger.error("Could not retrieve user data for update")
-                raise Exception("Failed to retrieve user data for update")
-        except Exception as e:
-            logger.error(f"Error updating user's AI access: {e}")
-            raise Exception(f"Failed to update user's AI access: {str(e)}")
-        
-        return {"success": True, "message": "AI access activated successfully"}
-    except Exception as e:
-        logger.error(f"Failed to activate AI access: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to activate AI access: {str(e)}")
+# This endpoint is now handled by the standalone activate_ai.py module
+# Keeping this commented out to avoid endpoint conflicts
+# @router.post("/activate-ai")
+# async def activate_ai(request: Request):
+#     """Activate AI access for a user using an activation code."""
+#     # Implementation moved to standalone module
+#     pass
 
 @router.get("/admin/activation-codes")
 async def list_activation_codes(request: Request, admin_user=Depends(admin_required)):

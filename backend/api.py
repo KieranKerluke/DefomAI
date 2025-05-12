@@ -138,28 +138,14 @@ async def log_requests_middleware(request: Request, call_next):
         logger.error(f"Request failed: {method} {path} | Error: {str(e)} | Time: {process_time:.2f}s")
         raise
 
-# Add middleware to verify AI access for all agent-related endpoints
-@app.middleware("http")
-async def ai_access_middleware(request: Request, call_next):
-    from middleware.ai_access_middleware import verify_ai_access
-    
-    try:
-        # Verify AI access before proceeding with the request
-        await verify_ai_access(request)
-        return await call_next(request)
-    except HTTPException as e:
-        # Pass through HTTP exceptions raised by the middleware
-        return JSONResponse(
-            status_code=e.status_code,
-            content={"detail": e.detail}
-        )
+# Middleware for AI access verification is disabled to prevent authentication issues
+# The verification will be handled directly by the endpoints using the ai_access_required dependency
 
 # Define allowed origins based on environment
 # For now, allow all origins to troubleshoot CORS issues
 allowed_origins = ["*"]
 
 # Original configuration (commented out for now)
-'''
 allowed_origins = [
     "https://www.defom-ai.vercel.app", 
     "https://defom-ai.vercel.app",

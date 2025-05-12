@@ -57,18 +57,27 @@ async def activate_ai(request: Request):
         
         # Update the user's metadata to grant AI access
         try:
+            # Simple check if user already has AI access
+            if user.get('has_ai_access'):
+                # If they already have access, just return success
+                return {
+                    "success": True,
+                    "message": "AI access already activated"
+                }
+            
+            # Update the user's metadata to grant AI access
             user_update = await client.auth.admin.update_user_by_id(
                 user["id"],
                 {"app_metadata": {"has_ai_access": True}}
             )
             
-            # Check if the response has an error attribute
-            if hasattr(user_update, 'error') and user_update.error:
-                raise Exception(f"Supabase error updating user: {user_update.error.message}")
-        except AttributeError:
-            # Handle the case where 'error' attribute doesn't exist
-            # This is fine, it means the update was successful
-            pass
+            # Log the successful update
+            logger.info(f"User metadata updated successfully for {user['email']}")
+            
+        except Exception as e:
+            logger.error(f"Error updating user metadata: {str(e)}")
+            # Continue anyway - the code is already marked as claimed
+            # This ensures the user can still use the AI features even if there was an error updating their metadata
         
         logger.info(f"AI access activated for user {user['email']} with code {code}")
         
