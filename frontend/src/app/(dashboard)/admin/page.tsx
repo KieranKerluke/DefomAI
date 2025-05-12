@@ -31,6 +31,9 @@ import {
   Key,
   Users,
   AlertCircle,
+  Trash,
+  Ban,
+  Play,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -66,6 +69,9 @@ export default function AdminPanel() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('codes');
+  const [isDeletingCode, setIsDeletingCode] = useState<string | null>(null);
+  const [isSuspendingCode, setIsSuspendingCode] = useState<string | null>(null);
+  const [isUnsuspendingCode, setIsUnsuspendingCode] = useState<string | null>(null);
 
   // Redirect non-admins
   useEffect(() => {
@@ -182,6 +188,87 @@ export default function AdminPanel() {
     setCopiedCodeId(id);
     toast.success('Code copied to clipboard');
     setTimeout(() => setCopiedCodeId(null), 2000);
+  };
+
+  // Delete activation code
+  const deleteActivationCode = async (codeId: string) => {
+    setIsDeletingCode(codeId);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`/api/admin/activation-codes/${codeId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete activation code');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        toast.success('Activation code deleted successfully');
+        fetchActivationCodes(); // Refresh the list
+      }
+    } catch (error) {
+      console.error('Error deleting activation code:', error);
+      toast.error('Failed to delete activation code');
+    } finally {
+      setIsDeletingCode(null);
+    }
+  };
+
+  // Suspend or unsuspend activation code
+  const toggleCodeSuspension = async (codeId: string, suspend: boolean) => {
+    if (suspend) {
+      setIsSuspendingCode(codeId);
+    } else {
+      setIsUnsuspendingCode(codeId);
+    }
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`/api/admin/activation-codes/${codeId}/suspend`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_suspended: suspend }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to ${suspend ? 'suspend' : 'unsuspend'} activation code`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        toast.success(`Activation code ${suspend ? 'suspended' : 'unsuspended'} successfully`);
+        fetchActivationCodes(); // Refresh the list
+      }
+    } catch (error) {
+      console.error(`Error ${suspend ? 'suspending' : 'unsuspending'} activation code:`, error);
+      toast.error(`Failed to ${suspend ? 'suspend' : 'unsuspend'} activation code`);
+    } finally {
+      if (suspend) {
+        setIsSuspendingCode(null);
+      } else {
+        setIsUnsuspendingCode(null);
+      }
+    }
   };
 
   // Load data on component mount
@@ -348,20 +435,72 @@ export default function AdminPanel() {
                             {formatDate(code.claimed_at)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                copyToClipboard(code.code_value, code.id)
-                              }
-                              disabled={code.is_claimed}
-                            >
-                              {copiedCodeId === code.id ? (
-                                <Check className="h-4 w-4" />
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  copyToClipboard(code.code_value, code.id)
+                                }
+                                disabled={code.is_claimed}
+                                title="Copy code"
+                              >
+                                {copiedCodeId === code.id ? (
+                                  <Check className="h-4 w-4" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </Button>
+                              
+                              {/* Suspend/Unsuspend button */}
+                              {code.is_active ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleCodeSuspension(code.id, true)}
+                                  className="text-amber-500 hover:text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/20"
+                                  disabled={isSuspendingCode === code.id}
+                                  title="Suspend code"
+                                >
+                                  {isSuspendingCode === code.id ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Ban className="h-4 w-4" />
+                                  )}
+                                </Button>
                               ) : (
-                                <Copy className="h-4 w-4" />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleCodeSuspension(code.id, false)}
+                                  className="text-green-500 hover:text-green-600 hover:bg-green-100 dark:hover:bg-green-900/20"
+                                  disabled={isUnsuspendingCode === code.id}
+                                  title="Unsuspend code"
+                                >
+                                  {isUnsuspendingCode === code.id ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Play className="h-4 w-4" />
+                                  )}
+                                </Button>
                               )}
-                            </Button>
+                              
+                              {/* Delete button */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteActivationCode(code.id)}
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                disabled={isDeletingCode === code.id}
+                                title="Delete code"
+                              >
+                                {isDeletingCode === code.id ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

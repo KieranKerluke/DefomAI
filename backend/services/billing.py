@@ -59,26 +59,20 @@ class SubscriptionStatus(BaseModel):
 async def get_stripe_customer_id(client, user_id: str) -> Optional[str]:
     """Get the Stripe customer ID for a user."""
     try:
-        # Try to query the basejump schema directly
-        result = await client.from_('basejump.billing_customers') \
-            .select('id') \
-            .eq('account_id', user_id) \
-            .execute()
+        # Try to use the execute_sql function
+        result = await client.rpc('execute_sql', {
+            'query': 'SELECT id FROM basejump.billing_customers WHERE account_id = $1',
+            'params': [user_id]
+        }).execute()
+        
+        if result.data and len(result.data) > 0:
+            return result.data[0]['id']
     except Exception as e:
         logger.error(f"Error getting Stripe customer ID: {str(e)}")
-        try:
-            # Fallback to public schema if basejump schema fails
-            result = await client.from_('billing_customers') \
-                .select('id') \
-                .eq('account_id', user_id) \
-                .execute()
-        except Exception as inner_e:
-            logger.error(f"Fallback query failed: {inner_e}")
-            return None
+        # Silently continue - this is not critical for AI access functionality
     
-    if result.data and len(result.data) > 0:
-        return result.data[0]['id']
     return None
+
 
 async def create_stripe_customer(client, user_id: str, email: str) -> str:
     """Create a new Stripe customer for a user."""

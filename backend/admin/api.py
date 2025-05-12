@@ -82,7 +82,11 @@ async def activate_ai(request: Request):
                 .eq("is_claimed", False) \
                 .execute()
             
-            code_record = code_result.data[0] if code_result.data and len(code_result.data) > 0 else None
+            # Check if there's data in the response
+            if hasattr(code_result, 'data') and code_result.data and len(code_result.data) > 0:
+                code_record = code_result.data[0]
+            else:
+                code_record = None
         except Exception as e:
             logger.error(f"Error checking activation code: {e}")
             raise Exception(f"Failed to verify activation code: {str(e)}")
@@ -92,7 +96,7 @@ async def activate_ai(request: Request):
         
         # Mark code as claimed
         try:
-            await client.from_("ai_activation_codes") \
+            update_result = await client.from_("ai_activation_codes") \
                 .update({
                     "is_claimed": True,
                     "claimed_by_user_id": user["id"],
@@ -100,6 +104,10 @@ async def activate_ai(request: Request):
                 }) \
                 .eq("id", code_record["id"]) \
                 .execute()
+                
+            # Check for errors in the response
+            if hasattr(update_result, 'error') and update_result.error:
+                raise Exception(f"Supabase error: {update_result.error}")
         except Exception as e:
             logger.error(f"Error marking code as claimed: {e}")
             raise Exception(f"Failed to mark activation code as claimed: {str(e)}")
@@ -116,10 +124,14 @@ async def activate_ai(request: Request):
                 app_metadata["has_ai_access"] = True
                 
                 # Update the user with new metadata
-                await client.auth.admin.update_user_by_id(
+                update_response = await client.auth.admin.update_user_by_id(
                     user["id"],
                     {"app_metadata": app_metadata}
                 )
+                
+                # Check for errors in the response
+                if hasattr(update_response, 'error') and update_response.error:
+                    raise Exception(f"Supabase auth error: {update_response.error}")
             else:
                 logger.error("Could not retrieve user data for update")
                 raise Exception("Failed to retrieve user data for update")
@@ -291,7 +303,7 @@ async def suspend_activation_code(code_id: str, request: Request, admin_user=Dep
         logger.error(f"Failed to suspend/unsuspend code: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to suspend/unsuspend activation code: {str(e)}")
 
-@router.get("/check-ai-access")
+@router.get("/check-ai-access", include_in_schema=True)
 async def check_ai_access(request: Request):
     """
     Check if the current user has AI access and if their access is suspended.
