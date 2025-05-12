@@ -425,8 +425,49 @@ async def ai_access_required(request: Request) -> Dict[str, Any]:
             detail="AI access required. Please use an activation code to enable AI features."
         )
     
-    # If we get here, the user has AI access
-    # We'll skip the suspension check for now to fix authentication issues
-    # This can be re-enabled once the core authentication is working
+    # Check if the user's activation code is valid
+    try:
+        db = DBConnection()
+        client = await db.client
+        
+        # Find the user's activation code
+        code_result = await client.from_("ai_activation_codes") \
+            .select("is_active") \
+            .eq("claimed_by_user_id", user["id"]) \
+            .eq("is_claimed", True) \
+            .execute()
+            
+        # If no code is found, the user needs to enter a passcode
+        if not code_result.data or len(code_result.data) == 0:
+            logger.warning(f"User {user.get('email')} has AI access flag but no activation code")
+            # Reset the user's AI access flag
+            try:
+                await client.auth.admin.update_user_by_id(
+                    user["id"],
+                    {"app_metadata": {"has_ai_access": False}}
+                )
+            except Exception as e:
+                logger.error(f"Error updating user metadata: {str(e)}")
+                
+            raise HTTPException(
+                status_code=403,
+                detail="AI access required. Please use an activation code to enable AI features."
+            )
+            
+        # If we found a code and it's not active, the user is suspended
+        is_active = code_result.data[0].get("is_active")
+        if is_active is False:  # Explicitly check for False, not just falsy values
+            logger.warning(f"User {user.get('email')} attempted to access AI features with a suspended code")
+            raise HTTPException(
+                status_code=403,
+                detail="Your AI access has been suspended. Please contact support for more information."
+            )
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # If there's an error checking the code, log it but allow access if user has AI access flag
+        logger.error(f"Error checking activation code status: {e}")
     
+    # If we get here, the user has AI access and their code is valid
     return user

@@ -287,12 +287,21 @@ async def check_ai_access(request: Request):
                     "code": code_data.get("code_value")
                 }
         
-        # User has AI access flag but no code found (unusual case)
+        # User has AI access flag but no code found - require passcode for all users
+        # Reset the user's AI access flag
+        try:
+            await client.auth.admin.update_user_by_id(
+                user["id"],
+                {"app_metadata": {"has_ai_access": False}}
+            )
+        except Exception as e:
+            logger.error(f"Error updating user metadata: {str(e)}")
+            
         return {
-            "has_access": True,
+            "has_access": False,
             "is_suspended": False,
-            "message": "AI access granted",
-            "status": "active",
+            "message": "AI access required. Please use an activation code to enable AI features.",
+            "status": "no_access",
             "code": None
         }
     except Exception as e:
