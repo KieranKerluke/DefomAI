@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Error during application startup: {e}")
         raise
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, root_path="/api")
 
 @app.middleware("http")
 async def custom_cors_middleware(request: Request, call_next):

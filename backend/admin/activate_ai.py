@@ -31,8 +31,9 @@ async def activate_ai(request: Request):
         # Check if the code exists and is valid
         code_result = await client.from_("ai_activation_codes").select("*").eq("code_value", code).execute()
         
-        if code_result.error:
-            raise Exception(f"Supabase error: {code_result.error.message}")
+        # Safely check for errors using getattr to avoid AttributeError
+        if getattr(code_result, "error", None):
+            raise Exception(f"Supabase error: {getattr(code_result.error, 'message', str(code_result.error))}")
             
         if not code_result.data or len(code_result.data) == 0:
             raise HTTPException(status_code=404, detail="Invalid activation code")
@@ -52,8 +53,9 @@ async def activate_ai(request: Request):
             "claimed_at": datetime.now().isoformat()
         }).eq("id", code_data["id"]).execute()
         
-        if update_result.error:
-            raise Exception(f"Supabase error updating code: {update_result.error.message}")
+        # Safely check for errors using getattr to avoid AttributeError
+        if getattr(update_result, "error", None):
+            raise Exception(f"Supabase error updating code: {getattr(update_result.error, 'message', str(update_result.error))}")
         
         # Update the user's metadata to grant AI access
         try:

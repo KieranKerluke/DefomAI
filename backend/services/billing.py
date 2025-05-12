@@ -66,11 +66,22 @@ async def get_stripe_customer_id(client, user_id: str) -> Optional[str]:
         if result.data and len(result.data) > 0:
             return result.data[0]['id']
             
-        # If that didn't work, try with customer_id column
-        result = await client.from_('billing_customers').select('id').eq('customer_id', user_id).execute()
-        
-        if result.data and len(result.data) > 0:
-            return result.data[0]['id']
+        # Skip the customer_id column check if the column doesn't exist
+        # This prevents the 'column billing_customers.customer_id does not exist' error
+        # When the database schema is updated to include customer_id, this will work
+        try:
+            # If that didn't work, try with customer_id column
+            result = await client.from_('billing_customers').select('id').eq('customer_id', user_id).execute()
+            
+            if result.data and len(result.data) > 0:
+                return result.data[0]['id']
+        except Exception as column_error:
+            # Silently handle the missing column error
+            if 'does not exist' in str(column_error):
+                logger.warning(f"Column customer_id does not exist in billing_customers table: {column_error}")
+            else:
+                # Re-raise if it's a different error
+                raise
     except Exception as e:
         logger.error(f"Error getting Stripe customer ID: {e}")
         # This is not critical for AI access functionality
