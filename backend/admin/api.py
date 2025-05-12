@@ -5,15 +5,12 @@ import string
 from datetime import datetime
 from services.supabase import DBConnection
 from utils.auth_utils import get_user_from_request, admin_required
-from admin.check_ai_access import router as check_ai_access_router
-from admin.activate_ai import router as activate_ai_router
 from utils.logger import logger
 
 router = APIRouter()
 
-# Include the check-ai-access and activate-ai routers
-router.include_router(check_ai_access_router)
-router.include_router(activate_ai_router)
+# We're using the implementations in this file instead of including the separate routers
+# to avoid duplicate endpoint conflicts
 db = DBConnection()
 
 @router.post("/admin/generate-code")

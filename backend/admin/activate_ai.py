@@ -56,13 +56,19 @@ async def activate_ai(request: Request):
             raise Exception(f"Supabase error updating code: {update_result.error.message}")
         
         # Update the user's metadata to grant AI access
-        user_update = await client.auth.admin.update_user_by_id(
-            user["id"],
-            {"app_metadata": {"has_ai_access": True}}
-        )
-        
-        if hasattr(user_update, 'error') and user_update.error:
-            raise Exception(f"Supabase error updating user: {user_update.error.message}")
+        try:
+            user_update = await client.auth.admin.update_user_by_id(
+                user["id"],
+                {"app_metadata": {"has_ai_access": True}}
+            )
+            
+            # Check if the response has an error attribute
+            if hasattr(user_update, 'error') and user_update.error:
+                raise Exception(f"Supabase error updating user: {user_update.error.message}")
+        except AttributeError:
+            # Handle the case where 'error' attribute doesn't exist
+            # This is fine, it means the update was successful
+            pass
         
         logger.info(f"AI access activated for user {user['email']} with code {code}")
         

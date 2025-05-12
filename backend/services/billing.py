@@ -59,11 +59,14 @@ class SubscriptionStatus(BaseModel):
 async def get_stripe_customer_id(client, user_id: str) -> Optional[str]:
     """Get the Stripe customer ID for a user."""
     try:
-        # Try to use the execute_sql function
-        result = await client.rpc('execute_sql', {
-            'query': 'SELECT id FROM basejump.billing_customers WHERE account_id = $1',
-            'params': [user_id]
-        }).execute()
+        # Try to query the basejump schema directly
+        result = await client.from_('basejump.billing_customers').select('id').eq('account_id', user_id).execute()
+        
+        if result.data and len(result.data) > 0:
+            return result.data[0]['id']
+            
+        # If not found in basejump schema, try the public schema
+        result = await client.from_('billing_customers').select('id').eq('account_id', user_id).execute()
         
         if result.data and len(result.data) > 0:
             return result.data[0]['id']
