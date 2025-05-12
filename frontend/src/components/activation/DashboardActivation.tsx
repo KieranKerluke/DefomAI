@@ -46,8 +46,9 @@ export default function DashboardActivation({ children }: DashboardActivationPro
         // Add a small delay to prevent rapid API calls
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Make a request to check AI access
-        const response = await fetch('/api/check-ai-access', {
+        // Use the backend URL directly to avoid 404 errors
+        const backendUrl = 'https://defomai-backend-production.up.railway.app/api/check-ai-access';
+        const response = await fetch(backendUrl, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

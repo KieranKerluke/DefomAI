@@ -35,7 +35,9 @@ export default function ActivateAIForm() {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch('/api/activate-ai', {
+      // Use the backend URL directly to avoid 404 errors
+      const backendUrl = 'https://defomai-backend-production.up.railway.app/api/activate-ai';
+      const response = await fetch(backendUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
