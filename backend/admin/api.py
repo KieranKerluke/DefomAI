@@ -31,41 +31,22 @@ async def generate_activation_code(request: Request, admin_user=Depends(admin_re
         # Get Supabase client
         client = await db.client
         
-        # Try to insert using execute_sql RPC for better reliability
+        # Insert directly using Supabase client
         try:
-            result = await client.rpc('execute_sql', {
-                'query': """
-                INSERT INTO ai_activation_codes 
-                (id, code_value, is_active, created_at, generated_by_admin_id, is_claimed) 
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                'params': [
-                    code_id,
-                    code_value,
-                    True,
-                    datetime.now().isoformat(),
-                    admin_user["id"],
-                    False
-                ]
+            result = await client.from_("ai_activation_codes").insert({
+                "id": code_id,
+                "code_value": code_value,
+                "is_active": True,
+                "created_at": datetime.now().isoformat(),
+                "generated_by_admin_id": admin_user["id"],
+                "is_claimed": False
             }).execute()
+            
+            if hasattr(result, 'error') and result.error:
+                raise Exception(f"Supabase error: {result.error.message}")
         except Exception as e:
-            logger.error(f"Error inserting activation code with execute_sql: {e}")
-            # Fallback to direct insert if execute_sql fails
-            try:
-                result = await client.from_("ai_activation_codes").insert({
-                    "id": code_id,
-                    "code_value": code_value,
-                    "is_active": True,
-                    "created_at": datetime.now().isoformat(),
-                    "generated_by_admin_id": admin_user["id"],
-                    "is_claimed": False
-                }).execute()
-                
-                if hasattr(result, 'error') and result.error:
-                    raise Exception(f"Supabase error: {result.error.message}")
-            except Exception as inner_e:
-                logger.error(f"Fallback insert failed: {inner_e}")
-                raise Exception(f"Failed to generate activation code: {str(inner_e)}")
+            logger.error(f"Error inserting activation code: {e}")
+            raise Exception(f"Failed to generate activation code: {str(e)}")
             
         return {"success": True, "code": code_value, "id": code_id}
     except Exception as e:
@@ -92,26 +73,14 @@ async def activate_ai(request: Request):
         # Get Supabase client
         client = await db.client
         
-        # Try to use the function we created
+        # Check for the activation code directly
         try:
-            result = await client.rpc('execute_sql', {
-                'query': "SELECT activate_ai_access($1, $2) as success;",
-                'params': [code, user["id"]]
-            }).execute()
-            
-            if result.data and len(result.data) > 0 and result.data[0].get("success") == True:
-                return {"success": True, "message": "AI access activated successfully"}
-        except Exception as e:
-            logger.error(f"Error activating AI access with function: {e}")
-            # Continue with manual process if function fails
-            pass
-        
-        # If the function call failed or returned false, check manually
-        try:
-            code_result = await client.rpc('execute_sql', {
-                'query': "SELECT id FROM ai_activation_codes WHERE code_value = $1 AND is_active = true AND is_claimed = false",
-                'params': [code]
-            }).execute()
+            code_result = await client.from_("ai_activation_codes") \
+                .select("id") \
+                .eq("code_value", code) \
+                .eq("is_active", True) \
+                .eq("is_claimed", False) \
+                .execute()
             
             code_record = code_result.data[0] if code_result.data and len(code_result.data) > 0 else None
         except Exception as e:
@@ -123,28 +92,37 @@ async def activate_ai(request: Request):
         
         # Mark code as claimed
         try:
-            await client.rpc('execute_sql', {
-                'query': """
-                UPDATE ai_activation_codes
-                SET is_claimed = true, claimed_by_user_id = $1, claimed_at = $2
-                WHERE id = $3
-                """,
-                'params': [user["id"], datetime.now().isoformat(), code_record["id"]]
-            }).execute()
+            await client.from_("ai_activation_codes") \
+                .update({
+                    "is_claimed": True,
+                    "claimed_by_user_id": user["id"],
+                    "claimed_at": datetime.now().isoformat()
+                }) \
+                .eq("id", code_record["id"]) \
+                .execute()
         except Exception as e:
             logger.error(f"Error marking code as claimed: {e}")
             raise Exception(f"Failed to mark activation code as claimed: {str(e)}")
         
-        # Update user's AI access in raw_app_meta_data
+        # Update user's AI access using the auth admin API
         try:
-            await client.rpc('execute_sql', {
-                'query': """
-                UPDATE auth.users
-                SET raw_app_meta_data = raw_app_meta_data || '{"has_ai_access": true}'::jsonb
-                WHERE id = $1
-                """,
-                'params': [user["id"]]
-            }).execute()
+            # Get current user data first
+            user_response = await client.auth.admin.get_user_by_id(user["id"])
+            if user_response and hasattr(user_response, 'user') and user_response.user:
+                current_user = user_response.user
+                
+                # Update app metadata
+                app_metadata = current_user.app_metadata or {}
+                app_metadata["has_ai_access"] = True
+                
+                # Update the user with new metadata
+                await client.auth.admin.update_user_by_id(
+                    user["id"],
+                    {"app_metadata": app_metadata}
+                )
+            else:
+                logger.error("Could not retrieve user data for update")
+                raise Exception("Failed to retrieve user data for update")
         except Exception as e:
             logger.error(f"Error updating user's AI access: {e}")
             raise Exception(f"Failed to update user's AI access: {str(e)}")
@@ -177,24 +155,20 @@ async def list_activation_codes(request: Request, admin_user=Depends(admin_requi
         for code in codes:
             if code.get("generated_by_admin_id"):
                 try:
-                    user_result = await client.rpc('execute_sql', {
-                        'query': 'SELECT email FROM auth.users WHERE id = $1',
-                        'params': [code["generated_by_admin_id"]]
-                    }).execute()
-                    if user_result.data and len(user_result.data) > 0:
-                        code["generated_by"] = user_result.data[0]["email"]
+                    # Try to get user email using the auth admin API
+                    user_response = await client.auth.admin.get_user_by_id(code["generated_by_admin_id"])
+                    if user_response and hasattr(user_response, 'user') and user_response.user:
+                        code["generated_by"] = user_response.user.email
                 except Exception as e:
                     logger.error(f"Error getting user email: {e}")
                     pass
                     
             if code.get("claimed_by_user_id"):
                 try:
-                    user_result = await client.rpc('execute_sql', {
-                        'query': 'SELECT email FROM auth.users WHERE id = $1',
-                        'params': [code["claimed_by_user_id"]]
-                    }).execute()
-                    if user_result.data and len(user_result.data) > 0:
-                        code["claimed_by"] = user_result.data[0]["email"]
+                    # Try to get user email using the auth admin API
+                    user_response = await client.auth.admin.get_user_by_id(code["claimed_by_user_id"])
+                    if user_response and hasattr(user_response, 'user') and user_response.user:
+                        code["claimed_by"] = user_response.user.email
                 except Exception as e:
                     logger.error(f"Error getting user email: {e}")
                     pass
@@ -203,6 +177,201 @@ async def list_activation_codes(request: Request, admin_user=Depends(admin_requi
     except Exception as e:
         logger.error(f"Failed to list codes: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list codes: {str(e)}")
+
+@router.delete("/admin/activation-codes/{code_id}")
+async def delete_activation_code(code_id: str, request: Request, admin_user=Depends(admin_required)):
+    """
+    Delete an activation code.
+    Only accessible by admin users.
+    """
+    try:
+        # Get Supabase client
+        client = await db.client
+        
+        # Delete the activation code
+        result = await client.from_("ai_activation_codes").delete().eq("id", code_id).execute()
+        
+        if hasattr(result, 'error') and result.error:
+            raise Exception(f"Supabase error: {result.error.message}")
+        
+        # If the code was claimed, revoke AI access for the user
+        try:
+            # First get the code to check if it was claimed
+            code_result = await client.from_("ai_activation_codes") \
+                .select("claimed_by_user_id, is_claimed") \
+                .eq("id", code_id) \
+                .execute()
+            
+            if code_result.data and len(code_result.data) > 0 and code_result.data[0].get("is_claimed") == True:
+                user_id = code_result.data[0].get("claimed_by_user_id")
+                if user_id:
+                    # Get current user data
+                    user_response = await client.auth.admin.get_user_by_id(user_id)
+                    if user_response and hasattr(user_response, 'user') and user_response.user:
+                        current_user = user_response.user
+                        
+                        # Update app metadata to revoke AI access
+                        app_metadata = current_user.app_metadata or {}
+                        app_metadata["has_ai_access"] = False
+                        
+                        # Update the user with new metadata
+                        await client.auth.admin.update_user_by_id(
+                            user_id,
+                            {"app_metadata": app_metadata}
+                        )
+        except Exception as inner_e:
+            logger.error(f"Error revoking AI access: {inner_e}")
+            # Continue with deletion even if revoking access fails
+        
+        return {"success": True, "message": "Activation code deleted successfully"}
+    except Exception as e:
+        logger.error(f"Failed to delete code: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete activation code: {str(e)}")
+
+@router.put("/admin/activation-codes/{code_id}/suspend")
+async def suspend_activation_code(code_id: str, request: Request, admin_user=Depends(admin_required)):
+    """
+    Suspend or unsuspend an activation code.
+    Only accessible by admin users.
+    """
+    try:
+        # Get request body to check if we're suspending or unsuspending
+        data = await request.json()
+        is_suspended = data.get("is_suspended", True)  # Default to suspending
+        
+        # Get Supabase client
+        client = await db.client
+        
+        # First get the code to check if it was claimed
+        code_result = await client.from_("ai_activation_codes") \
+            .select("claimed_by_user_id, is_claimed, is_active") \
+            .eq("id", code_id) \
+            .execute()
+        
+        if not code_result.data or len(code_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Activation code not found")
+            
+        code_data = code_result.data[0]
+        
+        # Update the activation code status
+        result = await client.from_("ai_activation_codes") \
+            .update({"is_active": not is_suspended}) \
+            .eq("id", code_id) \
+            .execute()
+        
+        if hasattr(result, 'error') and result.error:
+            raise Exception(f"Supabase error: {result.error.message}")
+        
+        # If the code was claimed, update the user's AI access
+        if code_data.get("is_claimed") == True:
+            user_id = code_data.get("claimed_by_user_id")
+            if user_id:
+                try:
+                    # Get current user data
+                    user_response = await client.auth.admin.get_user_by_id(user_id)
+                    if user_response and hasattr(user_response, 'user') and user_response.user:
+                        current_user = user_response.user
+                        
+                        # Update app metadata to match suspension status
+                        app_metadata = current_user.app_metadata or {}
+                        app_metadata["has_ai_access"] = not is_suspended
+                        
+                        # Update the user with new metadata
+                        await client.auth.admin.update_user_by_id(
+                            user_id,
+                            {"app_metadata": app_metadata}
+                        )
+                except Exception as inner_e:
+                    logger.error(f"Error updating user AI access: {inner_e}")
+                    # Continue with suspension even if updating user fails
+        
+        action = "suspended" if is_suspended else "unsuspended"
+        return {"success": True, "message": f"Activation code {action} successfully"}
+    except Exception as e:
+        logger.error(f"Failed to suspend/unsuspend code: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to suspend/unsuspend activation code: {str(e)}")
+
+@router.get("/check-ai-access")
+async def check_ai_access(request: Request):
+    """
+    Check if the current user has AI access and if their access is suspended.
+    Returns detailed status information.
+    """
+    try:
+        # Get user from request
+        user = await get_user_from_request(request)
+        
+        if not user:
+            return {
+                "has_access": False,
+                "is_suspended": False,
+                "message": "Authentication required",
+                "status": "unauthenticated"
+            }
+        
+        # Admins automatically have AI access
+        if user.get('is_admin'):
+            return {
+                "has_access": True,
+                "is_suspended": False,
+                "message": "Admin access granted",
+                "status": "admin"
+            }
+            
+        # Check if user has AI access flag
+        has_ai_access = user.get('has_ai_access', False)
+        
+        if not has_ai_access:
+            return {
+                "has_access": False,
+                "is_suspended": False,
+                "message": "AI access required. Please use an activation code to enable AI features.",
+                "status": "no_access"
+            }
+        
+        # Check if the user's activation code is suspended
+        client = await db.client
+        
+        # Find the user's activation code
+        code_result = await client.from_("ai_activation_codes") \
+            .select("is_active, code_value") \
+            .eq("claimed_by_user_id", user["id"]) \
+            .eq("is_claimed", True) \
+            .execute()
+            
+        # If we found a code and it's not active, the user is suspended
+        if code_result.data and len(code_result.data) > 0:
+            code_data = code_result.data[0]
+            is_active = code_data.get("is_active", True)
+            
+            if not is_active:
+                return {
+                    "has_access": False,
+                    "is_suspended": True,
+                    "message": "Your AI access has been suspended. Please contact support for more information.",
+                    "status": "suspended",
+                    "code": code_data.get("code_value")
+                }
+            else:
+                return {
+                    "has_access": True,
+                    "is_suspended": False,
+                    "message": "AI access granted",
+                    "status": "active",
+                    "code": code_data.get("code_value")
+                }
+        
+        # User has AI access flag but no code found (unusual case)
+        return {
+            "has_access": True,
+            "is_suspended": False,
+            "message": "AI access granted",
+            "status": "active",
+            "code": None
+        }
+    except Exception as e:
+        logger.error(f"Error checking AI access: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to check AI access: {str(e)}")
 
 @router.get("/admin/users")
 async def list_users(request: Request, admin_user=Depends(admin_required)):

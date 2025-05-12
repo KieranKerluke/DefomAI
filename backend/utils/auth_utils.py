@@ -290,24 +290,26 @@ async def get_user_from_request(request: Request) -> Optional[Dict[str, Any]]:
     
     db = DBConnection()
     try:
-        # Get user data from Supabase auth.users table using execute_sql RPC function
+        # Get user data from Supabase auth.users table
         client = await db.client
         try:
-            result = await client.rpc('execute_sql', {
-                'query': """
-                SELECT 
-                    id, 
-                    email, 
-                    raw_app_meta_data->>'is_admin' as is_admin,
-                    raw_app_meta_data->>'has_ai_access' as has_ai_access,
-                    created_at,
-                    last_sign_in_at
-                FROM auth.users
-                WHERE id = $1
-                """,
-                'params': [user_id]
-            }).execute()
-            user_data = result.data[0] if result.data and len(result.data) > 0 else None
+            # Try to use the auth admin API to get user data
+            user_response = await client.auth.admin.get_user_by_id(user_id)
+            if user_response and hasattr(user_response, 'user') and user_response.user:
+                user = user_response.user
+                user_data = {
+                    "id": user.id,
+                    "email": user.email,
+                    "created_at": user.created_at,
+                    "last_sign_in_at": user.last_sign_in_at
+                }
+                
+                # Extract metadata
+                if hasattr(user, 'app_metadata') and user.app_metadata:
+                    user_data["is_admin"] = user.app_metadata.get("is_admin", False)
+                    user_data["has_ai_access"] = user.app_metadata.get("has_ai_access", False)
+            else:
+                user_data = None
         except Exception as e:
             logger.error(f"Error getting user data: {e}")
             user_data = None
@@ -410,10 +412,38 @@ async def ai_access_required(request: Request) -> Dict[str, Any]:
         )
     
     # Admins automatically have AI access
-    if user.get('is_admin') or user.get('has_ai_access'):
+    if user.get('is_admin'):
+        return user
+        
+    # Check if user has AI access
+    if user.get('has_ai_access'):
+        # Check if the user's activation code is suspended
+        try:
+            db = DBConnection()
+            client = await db.client
+            
+            # Find the user's activation code
+            code_result = await client.from_("ai_activation_codes") \
+                .select("is_active") \
+                .eq("claimed_by_user_id", user["id"]) \
+                .eq("is_claimed", True) \
+                .execute()
+                
+            # If we found a code and it's not active, the user is suspended
+            if code_result.data and len(code_result.data) > 0 and code_result.data[0].get("is_active") == False:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Your AI access has been suspended. Please contact support for more information."
+                )
+        except Exception as e:
+            # If there's an error checking the code, log it but allow access if user has AI access flag
+            logger.error(f"Error checking activation code status: {e}")
+            
+        # If we get here, the user has AI access and their code is not suspended
         return user
     
+    # User doesn't have AI access
     raise HTTPException(
         status_code=403,
-        detail="AI access required. Please activate your account with an access code."
+        detail="AI access required. Please use an activation code to enable AI features."
     )
