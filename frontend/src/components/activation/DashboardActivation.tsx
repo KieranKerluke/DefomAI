@@ -5,24 +5,20 @@ import { useAuth } from '@/components/AuthProvider';
 import ActivateAIForm from './ActivateAIForm';
 import { Loader2 } from 'lucide-react';
 
-interface AIAccessCheckProps {
+interface DashboardActivationProps {
   children: ReactNode;
 }
 
-export default function AIAccessCheck({ children }: AIAccessCheckProps) {
+export default function DashboardActivation({ children }: DashboardActivationProps) {
   const { user, supabase } = useAuth();
   const [hasAIAccess, setHasAIAccess] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Clear any existing cached access status to force verification
+    // Always clear any cached access status to ensure proper verification
     localStorage.removeItem('aiAccessStatus');
     localStorage.removeItem('aiAccessTimestamp');
     
-    const now = Date.now();
-    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
-    
-    // Function to check AI access
     const checkAIAccess = async () => {
       if (!user) {
         setIsLoading(false);
@@ -33,23 +29,16 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
         // First check if user is admin, admins always have access
         if (user.app_metadata?.is_admin) {
           setHasAIAccess(true);
-          localStorage.setItem('aiAccessStatus', 'true');
-          localStorage.setItem('aiAccessTimestamp', now.toString());
           setIsLoading(false);
           return;
         }
 
-        // IMPORTANT: For all non-admin users, always verify with the server
-        // Don't trust the app_metadata or cached status for existing users
-
-        // If we need to check with the server
+        // Always verify with the server for non-admin users
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
 
         if (!token) {
           setHasAIAccess(false);
-          localStorage.setItem('aiAccessStatus', 'false');
-          localStorage.setItem('aiAccessTimestamp', now.toString());
           setIsLoading(false);
           return;
         }
@@ -66,16 +55,10 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
 
         // If response is 200, user has access
         if (response.ok) {
-          setHasAIAccess(true);
-          localStorage.setItem('aiAccessStatus', 'true');
-          localStorage.setItem('aiAccessTimestamp', now.toString());
-          
-          // Update local session metadata for future checks
-          await supabase.auth.refreshSession();
+          const data = await response.json();
+          setHasAIAccess(data.has_access === true);
         } else {
           setHasAIAccess(false);
-          localStorage.setItem('aiAccessStatus', 'false');
-          localStorage.setItem('aiAccessTimestamp', now.toString());
         }
       } catch (error) {
         console.error('Error checking AI access:', error);
@@ -85,7 +68,6 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
       }
     };
 
-    // Always check access with the server for all users
     checkAIAccess();
   }, [user, supabase]);
 
@@ -102,15 +84,17 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
     return <>{children}</>;
   }
 
-  // Otherwise show the activation form
+  // Otherwise show the activation form prominently on the dashboard
   return (
     <div className="container mx-auto py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8 text-center">Activate AI Access</h1>
+        <h1 className="text-3xl font-bold mb-4 text-center">Welcome to Suna AI</h1>
         <p className="text-muted-foreground text-center mb-8">
-          You need to activate AI access to use this feature. Please enter your activation code below.
+          To access the AI features, please enter your activation code below.
         </p>
-        <ActivateAIForm />
+        <div className="bg-card rounded-lg border shadow-sm p-6">
+          <ActivateAIForm />
+        </div>
       </div>
     </div>
   );

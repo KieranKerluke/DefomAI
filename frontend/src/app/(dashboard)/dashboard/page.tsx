@@ -31,6 +31,7 @@ import { useAccounts } from '@/hooks/use-accounts';
 import { isLocalMode, config } from '@/lib/config';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import DashboardActivation from '@/components/activation/DashboardActivation';
 
 // Constant for localStorage key to ensure consistency
 const PENDING_PROMPT_KEY = 'pendingAgentPrompt';
@@ -259,7 +260,9 @@ export default function DashboardPage() {
         </div>
       }
     >
-      <DashboardContent />
+      <DashboardActivation>
+        <DashboardContent />
+      </DashboardActivation>
     </Suspense>
   );
 }

@@ -244,18 +244,10 @@ async def check_ai_access(request: Request):
                 "status": "admin"
             }
             
-        # Check if user has AI access flag
-        has_ai_access = user.get('has_ai_access', False)
+        # Always check for a valid activation code, regardless of the has_ai_access flag
+        # This ensures that old accounts will also need to enter a passcode
         
-        if not has_ai_access:
-            return {
-                "has_access": False,
-                "is_suspended": False,
-                "message": "AI access required. Please use an activation code to enable AI features.",
-                "status": "no_access"
-            }
-        
-        # Check if the user's activation code is suspended
+        # We'll check the database first before making any decisions based on the has_ai_access flag
         client = await db.client
         
         # Find the user's activation code
@@ -265,44 +257,61 @@ async def check_ai_access(request: Request):
             .eq("is_claimed", True) \
             .execute()
             
-        # If we found a code and it's not active, the user is suspended
-        if code_result.data and len(code_result.data) > 0:
-            code_data = code_result.data[0]
-            is_active = code_data.get("is_active", True)
+        # If no code is found, the user needs to enter a passcode regardless of has_ai_access flag
+        if not code_result.data or len(code_result.data) == 0:
+            # Reset the user's AI access flag if it was set
+            has_ai_access = user.get('has_ai_access', False)
+            if has_ai_access:
+                try:
+                    await client.auth.admin.update_user_by_id(
+                        user["id"],
+                        {"app_metadata": {"has_ai_access": False}}
+                    )
+                    logger.warning(f"Reset AI access for user {user.get('email')} - no activation code found")
+                except Exception as e:
+                    logger.error(f"Error updating user metadata: {str(e)}")
             
-            if not is_active:
-                return {
-                    "has_access": False,
-                    "is_suspended": True,
-                    "message": "Your AI access has been suspended. Please contact support for more information.",
-                    "status": "suspended",
-                    "code": code_data.get("code_value")
-                }
-            else:
-                return {
-                    "has_access": True,
-                    "is_suspended": False,
-                    "message": "AI access granted",
-                    "status": "active",
-                    "code": code_data.get("code_value")
-                }
+            return {
+                "has_access": False,
+                "is_suspended": False,
+                "message": "AI access required. Please use an activation code to enable AI features.",
+                "status": "no_access"
+            }
         
-        # User has AI access flag but no code found - require passcode for all users
-        # Reset the user's AI access flag
-        try:
-            await client.auth.admin.update_user_by_id(
-                user["id"],
-                {"app_metadata": {"has_ai_access": False}}
-            )
-        except Exception as e:
-            logger.error(f"Error updating user metadata: {str(e)}")
+        # At this point, we know the user has a valid activation code
+        # Now check if the code is active or suspended
+        code_data = code_result.data[0]
+        is_active = code_data.get("is_active", True)
+        
+        if not is_active:
+            # Code is suspended
+            return {
+                "has_access": False,
+                "is_suspended": True,
+                "message": "Your AI access has been suspended. Please contact support for more information.",
+                "status": "suspended",
+                "code": code_data.get("code_value")
+            }
             
+        # Code is valid and active - ensure the user's has_ai_access flag is set
+        has_ai_access = user.get('has_ai_access', False)
+        if not has_ai_access:
+            try:
+                await client.auth.admin.update_user_by_id(
+                    user["id"],
+                    {"app_metadata": {"has_ai_access": True}}
+                )
+                logger.info(f"Updated AI access flag for user {user.get('email')} with valid activation code")
+            except Exception as e:
+                logger.error(f"Error updating user metadata: {str(e)}")
+        
+        # Grant access
         return {
-            "has_access": False,
+            "has_access": True,
             "is_suspended": False,
-            "message": "AI access required. Please use an activation code to enable AI features.",
-            "status": "no_access",
-            "code": None
+            "message": "AI access granted",
+            "status": "active",
+            "code": code_data.get("code_value")
         }
     except Exception as e:
         logger.error(f"Error checking AI access: {str(e)}")
