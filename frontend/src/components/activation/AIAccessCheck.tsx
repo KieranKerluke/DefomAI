@@ -15,6 +15,13 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Check for cached access status to reduce API calls
+    const cachedAccessStatus = localStorage.getItem('aiAccessStatus');
+    const cachedTimestamp = localStorage.getItem('aiAccessTimestamp');
+    const now = Date.now();
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+    
+    // Function to check AI access
     const checkAIAccess = async () => {
       if (!user) {
         setIsLoading(false);
@@ -25,29 +32,40 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
         // First check if user is admin, admins always have access
         if (user.app_metadata?.is_admin) {
           setHasAIAccess(true);
+          localStorage.setItem('aiAccessStatus', 'true');
+          localStorage.setItem('aiAccessTimestamp', now.toString());
           setIsLoading(false);
           return;
         }
 
         // Check if user has AI access in app_metadata
         if (user.app_metadata?.has_ai_access) {
-          setHasAIAccess(true);
-          setIsLoading(false);
-          return;
+          // Even if metadata says they have access, we'll still verify with the server
+          // but less frequently to avoid rate limiting
+          if (cachedAccessStatus === 'true' && cachedTimestamp && 
+              (now - parseInt(cachedTimestamp)) < CACHE_DURATION) {
+            setHasAIAccess(true);
+            setIsLoading(false);
+            return;
+          }
         }
 
-        // If not in app_metadata, check with the server
+        // If we need to check with the server
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
 
         if (!token) {
           setHasAIAccess(false);
+          localStorage.setItem('aiAccessStatus', 'false');
+          localStorage.setItem('aiAccessTimestamp', now.toString());
           setIsLoading(false);
           return;
         }
 
-        // Make a request to a simple endpoint that requires AI access
-        // This will use the ai_access_required middleware
+        // Add a small delay to prevent rapid API calls
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Make a request to check AI access
         const response = await fetch('/api/check-ai-access', {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -57,11 +75,15 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
         // If response is 200, user has access
         if (response.ok) {
           setHasAIAccess(true);
+          localStorage.setItem('aiAccessStatus', 'true');
+          localStorage.setItem('aiAccessTimestamp', now.toString());
           
           // Update local session metadata for future checks
           await supabase.auth.refreshSession();
         } else {
           setHasAIAccess(false);
+          localStorage.setItem('aiAccessStatus', 'false');
+          localStorage.setItem('aiAccessTimestamp', now.toString());
         }
       } catch (error) {
         console.error('Error checking AI access:', error);
@@ -71,7 +93,14 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
       }
     };
 
-    checkAIAccess();
+    // Use cached value if available and recent
+    if (cachedAccessStatus && cachedTimestamp && 
+        (now - parseInt(cachedTimestamp)) < CACHE_DURATION) {
+      setHasAIAccess(cachedAccessStatus === 'true');
+      setIsLoading(false);
+    } else {
+      checkAIAccess();
+    }
   }, [user, supabase]);
 
   if (isLoading) {

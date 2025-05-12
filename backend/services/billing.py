@@ -59,14 +59,20 @@ class SubscriptionStatus(BaseModel):
 async def get_stripe_customer_id(client, user_id: str) -> Optional[str]:
     """Get the Stripe customer ID for a user."""
     try:
-        # Just try the billing_customers table without any schema prefix
-        # This is the most likely table to exist in most environments
-        result = await client.from_('billing_customers').select('id').eq('account_id', user_id).execute()
+        # Try to query using user_id instead of account_id
+        # First attempt with user_id column
+        result = await client.from_('billing_customers').select('id').eq('user_id', user_id).execute()
+        
+        if result.data and len(result.data) > 0:
+            return result.data[0]['id']
+            
+        # If that didn't work, try with customer_id column
+        result = await client.from_('billing_customers').select('id').eq('customer_id', user_id).execute()
         
         if result.data and len(result.data) > 0:
             return result.data[0]['id']
     except Exception as e:
-        logger.error(f"Error getting Stripe customer ID: {str(e)}")
+        logger.error(f"Error getting Stripe customer ID: {e}")
         # This is not critical for AI access functionality
         pass
     
