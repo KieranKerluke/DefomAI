@@ -13,6 +13,7 @@ import { checkApiHealth } from '@/lib/api';
 import { MaintenancePage } from '@/components/maintenance/maintenance-page';
 import { DeleteOperationProvider } from '@/contexts/DeleteOperationContext';
 import { StatusOverlay } from '@/components/ui/status-overlay';
+import AIAccessCheck from '@/components/activation/AIAccessCheck';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -100,7 +101,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               onOpenChange={setShowMaintenanceAlert}
               closeable={true}
             />
-            <SidebarInset>{children}</SidebarInset>
+            <SidebarInset>
+              <AIAccessCheck>{children}</AIAccessCheck>
+            </SidebarInset>
           </main>
         </div>
         <StatusOverlay />
