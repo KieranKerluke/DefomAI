@@ -7,6 +7,7 @@ from services.supabase import DBConnection
 from utils.auth_utils import get_user_from_request, admin_required
 from admin.check_ai_access import router as check_ai_access_router
 from admin.activate_ai import router as activate_ai_router
+from utils.logger import logger
 
 router = APIRouter()
 
@@ -25,30 +26,27 @@ async def generate_activation_code(request: Request, admin_user=Depends(admin_re
         # Generate a random code (16 characters)
         code_chars = string.ascii_uppercase + string.digits
         code_value = ''.join(secrets.choice(code_chars) for _ in range(16))
+        code_id = str(uuid.uuid4())
         
-        # Insert into database using the function we created
-        result = await db.execute_single(
-            """
-            SELECT generate_activation_code($1) as code;
-            """,
-            admin_user["id"]
-        )
+        # Get Supabase client
+        client = await db.client
         
-        if not result or "code" not in result:
-            # If the function call failed, fall back to direct insert
-            code_id = str(uuid.uuid4())
-            await db.execute(
-                """
-                INSERT INTO ai_activation_codes 
-                (id, code_value, is_active, created_at, generated_by_admin_id, is_claimed)
-                VALUES ($1, $2, true, $3, $4, false)
-                """,
-                code_id, code_value, datetime.now(), admin_user["id"]
-            )
-            return {"success": True, "code": code_value, "id": code_id}
+        # Insert directly using Supabase client
+        result = await client.from_("ai_activation_codes").insert({
+            "id": code_id,
+            "code_value": code_value,
+            "is_active": True,
+            "created_at": datetime.now().isoformat(),
+            "generated_by_admin_id": admin_user["id"],
+            "is_claimed": False
+        }).execute()
         
-        return {"success": True, "code": result["code"]}
+        if result.error:
+            raise Exception(f"Supabase error: {result.error.message}")
+            
+        return {"success": True, "code": code_value, "id": code_id}
     except Exception as e:
+        logger.error(f"Failed to generate code: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate code: {str(e)}")
 
 @router.post("/activate-ai")
@@ -122,27 +120,39 @@ async def list_activation_codes(request: Request, admin_user=Depends(admin_requi
     Only accessible by admin users.
     """
     try:
-        codes = await db.fetch_all(
-            """
-            SELECT 
-                ac.id, 
-                ac.code_value, 
-                ac.is_active, 
-                ac.created_at, 
-                ac.is_claimed, 
-                ac.claimed_at,
-                ac.notes,
-                u1.email as generated_by,
-                u2.email as claimed_by
-            FROM ai_activation_codes ac
-            LEFT JOIN auth.users u1 ON ac.generated_by_admin_id = u1.id
-            LEFT JOIN auth.users u2 ON ac.claimed_by_user_id = u2.id
-            ORDER BY ac.created_at DESC
-            """
-        )
+        # Get Supabase client
+        client = await db.client
+        
+        # Get activation codes
+        result = await client.from_("ai_activation_codes").select("*").order("created_at", desc=True).execute()
+        
+        if result.error:
+            raise Exception(f"Supabase error: {result.error.message}")
+            
+        # Get user emails for the generated_by and claimed_by fields
+        codes = result.data
+        
+        # Enrich the data with user emails where possible
+        for code in codes:
+            if code.get("generated_by_admin_id"):
+                try:
+                    user_result = await client.from_("users").select("email").eq("id", code["generated_by_admin_id"]).execute()
+                    if user_result.data and len(user_result.data) > 0:
+                        code["generated_by"] = user_result.data[0]["email"]
+                except Exception:
+                    pass
+                    
+            if code.get("claimed_by_user_id"):
+                try:
+                    user_result = await client.from_("users").select("email").eq("id", code["claimed_by_user_id"]).execute()
+                    if user_result.data and len(user_result.data) > 0:
+                        code["claimed_by"] = user_result.data[0]["email"]
+                except Exception:
+                    pass
         
         return {"success": True, "codes": codes}
     except Exception as e:
+        logger.error(f"Failed to list codes: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list codes: {str(e)}")
 
 @router.get("/admin/users")
@@ -152,20 +162,47 @@ async def list_users(request: Request, admin_user=Depends(admin_required)):
     Only accessible by admin users.
     """
     try:
-        users = await db.fetch_all(
-            """
-            SELECT 
-                id, 
-                email, 
-                raw_app_meta_data->>'is_admin' as is_admin,
-                raw_app_meta_data->>'has_ai_access' as has_ai_access,
-                created_at,
-                last_sign_in_at
-            FROM auth.users
-            ORDER BY created_at DESC
-            """
-        )
+        # Get Supabase client
+        client = await db.client
+        
+        # Get users from auth.users table
+        # Since we can't directly query auth.users with the data API,
+        # we'll use the admin API to get users
+        users_response = await client.auth.admin.list_users()
+        
+        if hasattr(users_response, 'error') and users_response.error:
+            raise Exception(f"Supabase error: {users_response.error.message}")
+            
+        # Process user data to match our expected format
+        users = []
+        for user in users_response.users:
+            user_data = {
+                "id": user.id,
+                "email": user.email,
+                "created_at": user.created_at,
+                "last_sign_in_at": user.last_sign_in_at,
+                "is_admin": False,
+                "has_ai_access": False
+            }
+            
+            # Extract metadata
+            if hasattr(user, 'app_metadata') and user.app_metadata:
+                if 'is_admin' in user.app_metadata:
+                    user_data["is_admin"] = user.app_metadata["is_admin"] == True
+                if 'has_ai_access' in user.app_metadata:
+                    user_data["has_ai_access"] = user.app_metadata["has_ai_access"] == True
+                    
+            # Special case for admin email
+            if user.email and user.email.lower() == 'defom.ai.agent@gmail.com':
+                user_data["is_admin"] = True
+                user_data["has_ai_access"] = True
+                
+            users.append(user_data)
+        
+        # Sort by created_at
+        users.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         
         return {"success": True, "users": users}
     except Exception as e:
+        logger.error(f"Failed to list users: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list users: {str(e)}")

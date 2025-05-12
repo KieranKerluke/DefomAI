@@ -25,18 +25,19 @@ async def activate_ai(request: Request):
         if not code:
             raise HTTPException(status_code=400, detail="Activation code is required")
         
-        # Check if the code exists and is valid
-        code_data = await db.execute_single(
-            """
-            SELECT id, is_active, is_claimed
-            FROM ai_activation_codes
-            WHERE code_value = $1
-            """,
-            code
-        )
+        # Get Supabase client
+        client = await db.client
         
-        if not code_data:
+        # Check if the code exists and is valid
+        code_result = await client.from_("ai_activation_codes").select("*").eq("code_value", code).execute()
+        
+        if code_result.error:
+            raise Exception(f"Supabase error: {code_result.error.message}")
+            
+        if not code_result.data or len(code_result.data) == 0:
             raise HTTPException(status_code=404, detail="Invalid activation code")
+            
+        code_data = code_result.data[0]
         
         if not code_data.get("is_active"):
             raise HTTPException(status_code=400, detail="This activation code has been deactivated")
@@ -45,21 +46,23 @@ async def activate_ai(request: Request):
             raise HTTPException(status_code=400, detail="This activation code has already been used")
         
         # Mark the code as claimed
-        await db.execute(
-            """
-            UPDATE ai_activation_codes
-            SET is_claimed = true, claimed_by_user_id = $1, claimed_at = $2
-            WHERE id = $3
-            """,
-            user["id"], datetime.now(), code_data["id"]
-        )
+        update_result = await client.from_("ai_activation_codes").update({
+            "is_claimed": True,
+            "claimed_by_user_id": user["id"],
+            "claimed_at": datetime.now().isoformat()
+        }).eq("id", code_data["id"]).execute()
+        
+        if update_result.error:
+            raise Exception(f"Supabase error updating code: {update_result.error.message}")
         
         # Update the user's metadata to grant AI access
-        client = await db.client
-        await client.auth.admin.update_user_by_id(
+        user_update = await client.auth.admin.update_user_by_id(
             user["id"],
             {"app_metadata": {"has_ai_access": True}}
         )
+        
+        if hasattr(user_update, 'error') and user_update.error:
+            raise Exception(f"Supabase error updating user: {user_update.error.message}")
         
         logger.info(f"AI access activated for user {user['email']} with code {code}")
         
