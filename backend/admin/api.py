@@ -260,29 +260,28 @@ async def list_users(request: Request, admin_user=Depends(admin_required)):
             
         # Process user data to match our expected format
         users = []
-        try:
-            for user in users_response.users:
-                user_data = {
-                    "id": user.id,
-                    "email": user.email,
-                    "created_at": user.created_at,
-                    "last_sign_in_at": user.last_sign_in_at,
-                    "is_admin": False,
-                    "has_ai_access": False
-                }
-            
+        for user in users_response.users:
+            user_data = {
+                "id": user.id,
+                "email": user.email,
+                "created_at": user.created_at,
+                "last_sign_in_at": user.last_sign_in_at,
+                "is_admin": False,
+                "has_ai_access": False
+            }
+        
             # Extract metadata
             if hasattr(user, 'app_metadata') and user.app_metadata:
                 if 'is_admin' in user.app_metadata:
                     user_data["is_admin"] = user.app_metadata["is_admin"] == True
                 if 'has_ai_access' in user.app_metadata:
                     user_data["has_ai_access"] = user.app_metadata["has_ai_access"] == True
-                    
+                
             # Special case for admin email
             if user.email and user.email.lower() == 'defom.ai.agent@gmail.com':
                 user_data["is_admin"] = True
                 user_data["has_ai_access"] = True
-                
+            
             users.append(user_data)
         
         # Sort by created_at
