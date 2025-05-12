@@ -146,12 +146,14 @@ async def log_requests_middleware(request: Request, call_next):
 allowed_origins = ["*"]
 
 # Original configuration (commented out for now)
+"""
 allowed_origins = [
     "https://www.defom-ai.vercel.app", 
     "https://defom-ai.vercel.app",
     "https://defom-ai-git-main-kierankerluke.vercel.app",
     "https://defom-ai-kierankerluke.vercel.app"
 ]
+"""
 
 # Add staging-specific origins
 if config.ENV_MODE == EnvMode.STAGING:
@@ -160,7 +162,6 @@ if config.ENV_MODE == EnvMode.STAGING:
 # Add local-specific origins
 if config.ENV_MODE == EnvMode.LOCAL:
     allowed_origins.append("http://localhost:3000")
-'''
 
 # For development, you might want to allow all origins
 # Uncomment the next line if needed during development
