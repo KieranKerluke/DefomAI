@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -137,6 +137,22 @@ async def log_requests_middleware(request: Request, call_next):
         process_time = time.time() - start_time
         logger.error(f"Request failed: {method} {path} | Error: {str(e)} | Time: {process_time:.2f}s")
         raise
+
+# Add middleware to verify AI access for all agent-related endpoints
+@app.middleware("http")
+async def ai_access_middleware(request: Request, call_next):
+    from middleware.ai_access_middleware import verify_ai_access
+    
+    try:
+        # Verify AI access before proceeding with the request
+        await verify_ai_access(request)
+        return await call_next(request)
+    except HTTPException as e:
+        # Pass through HTTP exceptions raised by the middleware
+        return JSONResponse(
+            status_code=e.status_code,
+            content={"detail": e.detail}
+        )
 
 # Define allowed origins based on environment
 # For now, allow all origins to troubleshoot CORS issues

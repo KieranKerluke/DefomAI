@@ -66,5 +66,30 @@ class DBConnection:
             logger.error("Database client is None after initialization")
             raise RuntimeError("Database not initialized")
         return self._client
-
-
+        
+    async def execute(self, query, *args):
+        """Execute a SQL query and return all results."""
+        if not self._initialized:
+            await self.initialize()
+        try:
+            result = await self._client.rpc("execute_sql", {"query": query, "params": args})
+            return result
+        except Exception as e:
+            logger.error(f"Database query error: {e}")
+            raise
+            
+    async def execute_single(self, query, *args):
+        """Execute a SQL query and return the first result."""
+        result = await self.execute(query, *args)
+        if result and isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return result
+    
+    async def fetch_one(self, query, *args):
+        """Execute a SQL query and return the first result."""
+        try:
+            # Use execute_single as a fallback method
+            return await self.execute_single(query, *args)
+        except Exception as e:
+            logger.error(f"Database fetch_one error: {e}")
+            raise
