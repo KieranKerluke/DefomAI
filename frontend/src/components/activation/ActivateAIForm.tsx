@@ -52,10 +52,8 @@ export default function ActivateAIForm() {
         setSuccess(true);
         toast.success('AI access activated successfully!');
         
-        // Refresh the user session to update metadata
-        await supabase.auth.refreshSession();
-        
-        // Reload the page after a short delay to reflect the changes
+        // Don't refresh the session to avoid rate limiting (429 errors)
+        // Instead, just reload the page after a short delay
         setTimeout(() => {
           window.location.reload();
         }, 2000);

@@ -71,8 +71,8 @@ export default function AIAccessCheck({ children }: AIAccessCheckProps) {
           localStorage.setItem('aiAccessStatus', 'true');
           localStorage.setItem('aiAccessTimestamp', now.toString());
           
-          // Update local session metadata for future checks
-          await supabase.auth.refreshSession();
+          // Don't refresh the session to avoid rate limiting
+          // Just update the local state
         } else {
           setHasAIAccess(false);
           localStorage.setItem('aiAccessStatus', 'false');
