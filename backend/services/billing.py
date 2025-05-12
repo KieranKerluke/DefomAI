@@ -59,11 +59,11 @@ class SubscriptionStatus(BaseModel):
 async def get_stripe_customer_id(client, user_id: str) -> Optional[str]:
     """Get the Stripe customer ID for a user."""
     try:
-        # Use the public schema instead of basejump
-        result = await client.from_('billing_customers') \
-            .select('id') \
-            .eq('account_id', user_id) \
-            .execute()
+        # Use the basejump schema with the correct table name
+        result = await client.rpc('execute_sql', {
+            'query': 'SELECT id FROM basejump.billing_customers WHERE account_id = $1',
+            'params': [user_id]
+        }).execute()
     except Exception as e:
         logger.error(f"Error getting Stripe customer ID: {str(e)}")
         return None
@@ -82,12 +82,13 @@ async def create_stripe_customer(client, user_id: str, email: str) -> str:
     
     # Store customer ID in Supabase
     try:
-        # Use the public schema instead of basejump
-        await client.from_('billing_customers').insert({
-            'id': customer.id,
-            'account_id': user_id,
-            'email': email,
-            'provider': 'stripe'
+        # Use the basejump schema with execute_sql for better reliability
+        await client.rpc('execute_sql', {
+            'query': """
+            INSERT INTO basejump.billing_customers (id, account_id, email, provider)
+            VALUES ($1, $2, $3, $4)
+            """,
+            'params': [customer.id, user_id, email, 'stripe']
         }).execute()
     except Exception as e:
         logger.error(f"Error storing Stripe customer ID: {str(e)}")

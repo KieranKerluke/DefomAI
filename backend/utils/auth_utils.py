@@ -290,21 +290,27 @@ async def get_user_from_request(request: Request) -> Optional[Dict[str, Any]]:
     
     db = DBConnection()
     try:
-        # Get user data from Supabase auth.users table
-        user_data = await db.execute_single(
-            """
-            SELECT 
-                id, 
-                email, 
-                raw_app_meta_data->>'is_admin' as is_admin,
-                raw_app_meta_data->>'has_ai_access' as has_ai_access,
-                created_at,
-                last_sign_in_at
-            FROM auth.users
-            WHERE id = $1
-            """,
-            user_id
-        )
+        # Get user data from Supabase auth.users table using execute_sql RPC function
+        client = await db.client
+        try:
+            result = await client.rpc('execute_sql', {
+                'query': """
+                SELECT 
+                    id, 
+                    email, 
+                    raw_app_meta_data->>'is_admin' as is_admin,
+                    raw_app_meta_data->>'has_ai_access' as has_ai_access,
+                    created_at,
+                    last_sign_in_at
+                FROM auth.users
+                WHERE id = $1
+                """,
+                'params': [user_id]
+            }).execute()
+            user_data = result.data[0] if result.data and len(result.data) > 0 else None
+        except Exception as e:
+            logger.error(f"Error getting user data: {e}")
+            user_data = None
         
         if not user_data:
             # If we couldn't get user data but have email, create a minimal user object
