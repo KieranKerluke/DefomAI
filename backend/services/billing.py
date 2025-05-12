@@ -59,21 +59,18 @@ class SubscriptionStatus(BaseModel):
 async def get_stripe_customer_id(client, user_id: str) -> Optional[str]:
     """Get the Stripe customer ID for a user."""
     try:
-        # Try to query the basejump schema directly
-        result = await client.from_('basejump.billing_customers').select('id').eq('account_id', user_id).execute()
-        
-        if result.data and len(result.data) > 0:
-            return result.data[0]['id']
-            
-        # If not found in basejump schema, try the public schema
+        # Just try the billing_customers table without any schema prefix
+        # This is the most likely table to exist in most environments
         result = await client.from_('billing_customers').select('id').eq('account_id', user_id).execute()
         
         if result.data and len(result.data) > 0:
             return result.data[0]['id']
     except Exception as e:
         logger.error(f"Error getting Stripe customer ID: {str(e)}")
-        # Silently continue - this is not critical for AI access functionality
+        # This is not critical for AI access functionality
+        pass
     
+    # If we get here, we couldn't find a customer ID
     return None
 
 
