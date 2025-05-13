@@ -18,6 +18,7 @@ from openai import OpenAIError
 import litellm
 from utils.logger import logger
 from utils.config import config
+from utils.llm_config import get_max_tokens_for_model, get_request_config
 from datetime import datetime
 import traceback
 
@@ -106,16 +107,21 @@ def prepare_params(
     if model_id:
         params["model_id"] = model_id
 
-    # Handle token limits
-    if max_tokens is not None:
-        # For Claude 3.7 in Bedrock, do not set max_tokens or max_tokens_to_sample
-        # as it causes errors with inference profiles
-        if model_name.startswith("bedrock/") and "claude-3-7" in model_name:
-            logger.debug(f"Skipping max_tokens for Claude 3.7 model: {model_name}")
-            # Do not add any max_tokens parameter for Claude 3.7
-        else:
-            param_name = "max_completion_tokens" if 'o1' in model_name else "max_tokens"
-            params[param_name] = max_tokens
+    # Handle token limits - use our configuration to prevent token limit errors
+    # If max_tokens is not provided, use the configured limit for the model
+    if max_tokens is None:
+        # Get the recommended max tokens for this model
+        max_tokens = get_max_tokens_for_model(model_name)
+        logger.debug(f"Using configured max_tokens limit for {model_name}: {max_tokens}")
+    
+    # For Claude 3.7 in Bedrock, do not set max_tokens or max_tokens_to_sample
+    # as it causes errors with inference profiles
+    if model_name.startswith("bedrock/") and "claude-3-7" in model_name:
+        logger.debug(f"Skipping max_tokens for Claude 3.7 model: {model_name}")
+    else:
+        # For all other models, set max_tokens
+        param_name = "max_completion_tokens" if 'o1' in model_name else "max_tokens"
+        params[param_name] = max_tokens
 
     # Add tools if provided
     if tools:
