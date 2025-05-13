@@ -32,7 +32,7 @@ async def generate_activation_code(request: Request, admin_user=Depends(admin_re
         try:
             result = await client.from_("ai_activation_codes").insert({
                 "id": code_id,
-                "code_value": code_value,
+                "code": code_value,
                 "is_active": True,
                 "created_at": datetime.now().isoformat(),
                 "generated_by_admin_id": admin_user["id"],
@@ -163,7 +163,7 @@ async def delete_activation_code(code_id: str, request: Request, admin_user=Depe
                             "message": "Your access has been blocked by an administrator. Please contact support for assistance.",
                             "updated_at": datetime.now().isoformat(),
                             "updated_by": admin_user["id"],
-                            "code_value": code_value
+                            "code": code_value
                         }).eq("user_id", user_id).execute()
                     else:
                         # Create new record
@@ -174,7 +174,7 @@ async def delete_activation_code(code_id: str, request: Request, admin_user=Depe
                             "created_at": datetime.now().isoformat(),
                             "updated_at": datetime.now().isoformat(),
                             "updated_by": admin_user["id"],
-                            "code_value": code_value
+                            "code": code_value
                         }).execute()
                     
                     logger.info(f"User {user_id} has been blocked after code deletion")
@@ -244,7 +244,7 @@ async def suspend_activation_code(code_id: str, request: Request, admin_user=Dep
                                 "message": "Your access has been temporarily suspended by an administrator. Please contact support for assistance.",
                                 "updated_at": datetime.now().isoformat(),
                                 "updated_by": admin_user["id"],
-                                "code_value": code_value
+                                "code": code_value
                             }).eq("user_id", user_id).execute()
                         else:
                             # Create new record
@@ -255,7 +255,7 @@ async def suspend_activation_code(code_id: str, request: Request, admin_user=Dep
                                 "created_at": datetime.now().isoformat(),
                                 "updated_at": datetime.now().isoformat(),
                                 "updated_by": admin_user["id"],
-                                "code_value": code_value
+                                "code": code_value
                             }).execute()
                         
                         logger.info(f"Suspended AI access for user {user_id}")
@@ -280,7 +280,7 @@ async def suspend_activation_code(code_id: str, request: Request, admin_user=Dep
                                 "message": "Your access has been restored.",
                                 "updated_at": datetime.now().isoformat(),
                                 "updated_by": admin_user["id"],
-                                "code_value": code_value
+                                "code": code_value
                             }).eq("user_id", user_id).execute()
                         
                         logger.info(f"Restored AI access for user {user_id}")
@@ -520,80 +520,103 @@ async def list_users(request: Request, admin_user=Depends(admin_required)):
         # Get Supabase client
         client = await db.client
         
-        # Get users from auth.users table
-        # Since we can't directly query auth.users with the data API,
-        # we'll use the admin API to get users
+        # Get users from auth.users table using execute_sql directly
+        # This is more reliable than using the admin API which may have different response formats
         try:
-            users_response = await client.auth.admin.list_users()
+            result = await client.rpc('execute_sql', {
+                'query': """
+                SELECT 
+                    id, 
+                    email, 
+                    raw_user_meta_data->>'is_admin' as is_admin,
+                    raw_user_meta_data->>'has_ai_access' as has_ai_access,
+                    created_at,
+                    last_sign_in_at
+                FROM auth.users
+                ORDER BY created_at DESC
+                """,
+                'params': []
+            }).execute()
             
-            if hasattr(users_response, 'error') and users_response.error:
-                raise Exception(f"Supabase error: {users_response.error.message}")
-        except Exception as e:
-            logger.error(f"Error listing users: {e}")
-            # Fallback to using execute_sql if admin API fails
-            try:
-                result = await client.rpc('execute_sql', {
-                    'query': """
-                    SELECT 
-                        id, 
-                        email, 
-                        raw_app_meta_data->>'is_admin' as is_admin,
-                        raw_app_meta_data->>'has_ai_access' as has_ai_access,
-                        created_at,
-                        last_sign_in_at
-                    FROM auth.users
-                    ORDER BY created_at DESC
-                    """,
-                    'params': []
-                }).execute()
+            if not result.data:
+                return {"success": True, "users": []}
                 
-                # Create a mock users_response object with the data from execute_sql
-                class MockUser:
-                    def __init__(self, data):
-                        self.id = data.get('id')
-                        self.email = data.get('email')
-                        self.created_at = data.get('created_at')
-                        self.last_sign_in_at = data.get('last_sign_in_at')
-                        self.app_metadata = {
-                            'is_admin': data.get('is_admin') == 'true',
-                            'has_ai_access': data.get('has_ai_access') == 'true'
+            # Process user data directly from the SQL result
+            users = []
+            for user_data in result.data:
+                user = {
+                    "id": user_data.get('id'),
+                    "email": user_data.get('email'),
+                    "created_at": user_data.get('created_at'),
+                    "last_sign_in_at": user_data.get('last_sign_in_at'),
+                    "is_admin": user_data.get('is_admin') == 'true',
+                    "has_ai_access": user_data.get('has_ai_access') == 'true'
+                }
+                
+                # Special case for admin email
+                if user["email"] and user["email"].lower() == 'defom.ai.agent@gmail.com':
+                    user["is_admin"] = True
+                    user["has_ai_access"] = True
+                
+                # Get AI access status from the ai_access_status table
+                try:
+                    status_result = await client.from_("ai_access_status").select("*").eq("user_id", user["id"]).execute()
+                    if status_result.data and len(status_result.data) > 0:
+                        status = status_result.data[0]
+                        user["ai_status"] = {
+                            "has_access": status.get("has_access", False),
+                            "is_suspended": status.get("is_suspended", False),
+                            "is_blocked": status.get("is_blocked", False),
+                            "status": status.get("status", "no_access"),
+                            "message": status.get("message", "")
                         }
+                except Exception as status_e:
+                    logger.error(f"Error getting AI status for user {user['id']}: {status_e}")
+                    user["ai_status"] = {
+                        "has_access": user["has_ai_access"],
+                        "is_suspended": False,
+                        "is_blocked": False,
+                        "status": "unknown",
+                        "message": ""
+                    }
                 
-                users_response = type('obj', (object,), {'users': [MockUser(user) for user in result.data]})
-            except Exception as inner_e:
-                logger.error(f"Fallback query failed: {inner_e}")
-                raise HTTPException(status_code=500, detail=f"Failed to list users: {str(e)}")
-            
-        # Process user data to match our expected format
-        users = []
-        for user in users_response.users:
-            user_data = {
-                "id": user.id,
-                "email": user.email,
-                "created_at": user.created_at,
-                "last_sign_in_at": user.last_sign_in_at,
-                "is_admin": False,
-                "has_ai_access": False
-            }
-        
-            # Extract metadata
-            if hasattr(user, 'app_metadata') and user.app_metadata:
-                if 'is_admin' in user.app_metadata:
-                    user_data["is_admin"] = user.app_metadata["is_admin"] == True
-                if 'has_ai_access' in user.app_metadata:
-                    user_data["has_ai_access"] = user.app_metadata["has_ai_access"] == True
+                users.append(user)
                 
-            # Special case for admin email
-            if user.email and user.email.lower() == 'defom.ai.agent@gmail.com':
-                user_data["is_admin"] = True
-                user_data["has_ai_access"] = True
+            return {"success": True, "users": users}
             
-            users.append(user_data)
-        
-        # Sort by created_at
-        users.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        
-        return {"success": True, "users": users}
+        except Exception as e:
+            logger.error(f"Error executing SQL to list users: {e}")
+            # Fallback to a simpler approach if the SQL query fails
+            try:
+                # Get users directly from the auth table
+                users_result = await client.from_("auth.users").select("id,email,created_at,last_sign_in_at").execute()
+                
+                if not users_result.data:
+                    return {"success": True, "users": []}
+                    
+                users = []
+                for user_data in users_result.data:
+                    user = {
+                        "id": user_data.get('id'),
+                        "email": user_data.get('email'),
+                        "created_at": user_data.get('created_at'),
+                        "last_sign_in_at": user_data.get('last_sign_in_at'),
+                        "is_admin": False,
+                        "has_ai_access": False
+                    }
+                    
+                    # Special case for admin email
+                    if user["email"] and user["email"].lower() == 'defom.ai.agent@gmail.com':
+                        user["is_admin"] = True
+                        user["has_ai_access"] = True
+                        
+                    users.append(user)
+                
+                return {"success": True, "users": users}
+            except Exception as fallback_e:
+                logger.error(f"Fallback approach failed: {fallback_e}")
+                # Return an empty list as last resort
+                return {"success": True, "users": []}
     except Exception as e:
         logger.error(f"Failed to list users: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list users: {str(e)}")
