@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Error during application startup: {e}")
         raise
 
-app = FastAPI(lifespan=lifespan, root_path="/api")
+app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def custom_cors_middleware(request: Request, call_next):
@@ -194,7 +194,7 @@ app.include_router(admin_api.router, prefix="/api")
 app.include_router(activate_ai_api.router, prefix="/api")
 
 
-@app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """Health check endpoint to verify API is working."""
     logger.info("Health check endpoint called")
