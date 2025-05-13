@@ -194,7 +194,7 @@ app.include_router(admin_api.router, prefix="/api")
 app.include_router(activate_ai_api.router, prefix="/api")
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """Health check endpoint to verify API is working."""
     logger.info("Health check endpoint called")
