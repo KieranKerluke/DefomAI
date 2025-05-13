@@ -32,7 +32,7 @@ async def generate_activation_code(request: Request, admin_user=Depends(admin_re
         try:
             result = await client.from_("ai_activation_codes").insert({
                 "id": code_id,
-                "code": code_value,
+                "code_value": code_value,
                 "is_active": True,
                 "created_at": datetime.now().isoformat(),
                 "generated_by_admin_id": admin_user["id"],
@@ -45,7 +45,7 @@ async def generate_activation_code(request: Request, admin_user=Depends(admin_re
             logger.error(f"Error inserting activation code: {e}")
             raise Exception(f"Failed to generate activation code: {str(e)}")
             
-        return {"success": True, "code": code_value, "id": code_id}
+        return {"success": True, "code_value": code_value, "id": code_id}
     except Exception as e:
         logger.error(f"Failed to generate code: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate activation code: {str(e)}")
@@ -163,7 +163,7 @@ async def delete_activation_code(code_id: str, request: Request, admin_user=Depe
                             "message": "Your access has been blocked by an administrator. Please contact support for assistance.",
                             "updated_at": datetime.now().isoformat(),
                             "updated_by": admin_user["id"],
-                            "code": code_value
+                            "code_value": code_value
                         }).eq("user_id", user_id).execute()
                     else:
                         # Create new record
@@ -174,7 +174,7 @@ async def delete_activation_code(code_id: str, request: Request, admin_user=Depe
                             "created_at": datetime.now().isoformat(),
                             "updated_at": datetime.now().isoformat(),
                             "updated_by": admin_user["id"],
-                            "code": code_value
+                            "code_value": code_value
                         }).execute()
                     
                     logger.info(f"User {user_id} has been blocked after code deletion")
@@ -244,7 +244,7 @@ async def suspend_activation_code(code_id: str, request: Request, admin_user=Dep
                                 "message": "Your access has been temporarily suspended by an administrator. Please contact support for assistance.",
                                 "updated_at": datetime.now().isoformat(),
                                 "updated_by": admin_user["id"],
-                                "code": code_value
+                                "code_value": code_value
                             }).eq("user_id", user_id).execute()
                         else:
                             # Create new record
@@ -255,7 +255,7 @@ async def suspend_activation_code(code_id: str, request: Request, admin_user=Dep
                                 "created_at": datetime.now().isoformat(),
                                 "updated_at": datetime.now().isoformat(),
                                 "updated_by": admin_user["id"],
-                                "code": code_value
+                                "code_value": code_value
                             }).execute()
                         
                         logger.info(f"Suspended AI access for user {user_id}")
@@ -280,7 +280,7 @@ async def suspend_activation_code(code_id: str, request: Request, admin_user=Dep
                                 "message": "Your access has been restored.",
                                 "updated_at": datetime.now().isoformat(),
                                 "updated_by": admin_user["id"],
-                                "code": code_value
+                                "code_value": code_value
                             }).eq("user_id", user_id).execute()
                         
                         logger.info(f"Restored AI access for user {user_id}")
@@ -440,7 +440,7 @@ async def check_ai_access(request: Request):
                         "is_blocked": False,
                         "status": "suspended",
                         "message": "Your AI access has been suspended. Please contact support for more information.",
-                        "code": code_value,
+                        "code_value": code_value,
                         "updated_at": datetime.now().isoformat()
                     }).eq("user_id", user["id"]).execute()
                 else:
@@ -452,7 +452,7 @@ async def check_ai_access(request: Request):
                         "is_blocked": False,
                         "status": "suspended",
                         "message": "Your AI access has been suspended. Please contact support for more information.",
-                        "code": code_value
+                        "code_value": code_value
                     }).execute()
             except Exception as e:
                 logger.error(f"Error updating ai_access_status: {str(e)}")
@@ -464,7 +464,7 @@ async def check_ai_access(request: Request):
                 "is_blocked": False,
                 "message": "Your AI access has been suspended. Please contact support for more information.",
                 "status": "suspended",
-                "code": code_value
+                "code_value": code_value
             }
         
         # Code is valid and active - update the ai_access_status record
@@ -480,7 +480,7 @@ async def check_ai_access(request: Request):
                     "is_blocked": False,
                     "status": "active",
                     "message": "AI access granted",
-                    "code": code_value,
+                    "code_value": code_value,
                     "updated_at": datetime.now().isoformat()
                 }).eq("user_id", user["id"]).execute()
             else:
@@ -492,7 +492,7 @@ async def check_ai_access(request: Request):
                     "is_blocked": False,
                     "status": "active",
                     "message": "AI access granted",
-                    "code": code_value
+                    "code_value": code_value
                 }).execute()
         except Exception as e:
             logger.error(f"Error updating ai_access_status: {str(e)}")
@@ -504,7 +504,7 @@ async def check_ai_access(request: Request):
             "is_blocked": False,
             "message": "AI access granted",
             "status": "active",
-            "code": code_value
+            "code_value": code_value
         }
     except Exception as e:
         logger.error(f"Error checking AI access: {str(e)}")
@@ -520,38 +520,34 @@ async def list_users(request: Request, admin_user=Depends(admin_required)):
         # Get Supabase client
         client = await db.client
         
-        # Get users from auth.users table using execute_sql directly
+        # Get users directly from the auth.users view
         # This is more reliable than using the admin API which may have different response formats
         try:
-            result = await client.rpc('execute_sql', {
-                'query': """
-                SELECT 
-                    id, 
-                    email, 
-                    raw_user_meta_data->>'is_admin' as is_admin,
-                    raw_user_meta_data->>'has_ai_access' as has_ai_access,
-                    created_at,
-                    last_sign_in_at
-                FROM auth.users
-                ORDER BY created_at DESC
-                """,
-                'params': []
-            }).execute()
+            # Use the auth API to get users
+            users_response = await client.auth.admin.list_users()
             
-            if not result.data:
+            if not hasattr(users_response, 'users') or not users_response.users:
                 return {"success": True, "users": []}
                 
-            # Process user data directly from the SQL result
+            # Process user data from the admin API response
             users = []
-            for user_data in result.data:
+            for user_obj in users_response.users:
                 user = {
-                    "id": user_data.get('id'),
-                    "email": user_data.get('email'),
-                    "created_at": user_data.get('created_at'),
-                    "last_sign_in_at": user_data.get('last_sign_in_at'),
-                    "is_admin": user_data.get('is_admin') == 'true',
-                    "has_ai_access": user_data.get('has_ai_access') == 'true'
+                    "id": user_obj.id,
+                    "email": user_obj.email,
+                    "created_at": user_obj.created_at,
+                    "last_sign_in_at": user_obj.last_sign_in_at,
+                    "is_admin": False,
+                    "has_ai_access": False
                 }
+                
+                # Extract metadata
+                if hasattr(user_obj, 'app_metadata') and user_obj.app_metadata:
+                    user["is_admin"] = user_obj.app_metadata.get('is_admin', False)
+                    user["has_ai_access"] = user_obj.app_metadata.get('has_ai_access', False)
+                elif hasattr(user_obj, 'raw_user_meta_data') and user_obj.raw_user_meta_data:
+                    user["is_admin"] = user_obj.raw_user_meta_data.get('is_admin', False) == 'true'
+                    user["has_ai_access"] = user_obj.raw_user_meta_data.get('has_ai_access', False) == 'true'
                 
                 # Special case for admin email
                 if user["email"] and user["email"].lower() == 'defom.ai.agent@gmail.com':
@@ -586,33 +582,29 @@ async def list_users(request: Request, admin_user=Depends(admin_required)):
             
         except Exception as e:
             logger.error(f"Error executing SQL to list users: {e}")
-            # Fallback to a simpler approach if the SQL query fails
+            # Fallback to a simpler approach if the admin API fails
             try:
-                # Get users directly from the auth table
-                users_result = await client.from_("auth.users").select("id,email,created_at,last_sign_in_at").execute()
-                
-                if not users_result.data:
-                    return {"success": True, "users": []}
-                    
-                users = []
-                for user_data in users_result.data:
-                    user = {
-                        "id": user_data.get('id'),
-                        "email": user_data.get('email'),
-                        "created_at": user_data.get('created_at'),
-                        "last_sign_in_at": user_data.get('last_sign_in_at'),
-                        "is_admin": False,
-                        "has_ai_access": False
-                    }
-                    
-                    # Special case for admin email
-                    if user["email"] and user["email"].lower() == 'defom.ai.agent@gmail.com':
-                        user["is_admin"] = True
-                        user["has_ai_access"] = True
-                        
-                    users.append(user)
-                
-                return {"success": True, "users": users}
+                # Just return a minimal list with the admin user
+                return {
+                    "success": True,
+                    "users": [
+                        {
+                            "id": admin_user["id"],
+                            "email": admin_user["email"],
+                            "created_at": datetime.now().isoformat(),
+                            "last_sign_in_at": datetime.now().isoformat(),
+                            "is_admin": True,
+                            "has_ai_access": True,
+                            "ai_status": {
+                                "has_access": True,
+                                "is_suspended": False,
+                                "is_blocked": False,
+                                "status": "admin",
+                                "message": "Admin access"
+                            }
+                        }
+                    ]
+                }
             except Exception as fallback_e:
                 logger.error(f"Fallback approach failed: {fallback_e}")
                 # Return an empty list as last resort

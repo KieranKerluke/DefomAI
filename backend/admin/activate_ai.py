@@ -78,7 +78,7 @@ async def activate_ai(request: Request):
                     "is_blocked": False,
                     "status": "active",
                     "message": "AI access granted",
-                    "code": code,
+                    "code_value": code,
                     "updated_at": datetime.now().isoformat()
                 }).eq("user_id", user["id"]).execute()
             else:
@@ -90,7 +90,7 @@ async def activate_ai(request: Request):
                     "is_blocked": False,
                     "status": "active",
                     "message": "AI access granted",
-                    "code": code
+                    "code_value": code
                 }).execute()
             
             # For backward compatibility, also update the user's metadata

@@ -1,7 +1,7 @@
 -- First drop the existing function
 DROP FUNCTION IF EXISTS public.check_ai_access(UUID);
 
--- Then recreate it with the fixed parameter name
+-- Then recreate it with the fixed parameter name and correct column names
 CREATE OR REPLACE FUNCTION public.check_ai_access(input_user_id UUID)
 RETURNS TABLE (
     has_access BOOLEAN,
@@ -45,7 +45,7 @@ BEGIN
             FALSE as is_blocked,
             'no_access' as status,
             'No AI access. Please use an activation code.' as message,
-            NULL as code
+            NULL as code_value
         WHERE NOT EXISTS (
             SELECT 1 FROM public.ai_access_status
             WHERE user_id = input_user_id
