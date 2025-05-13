@@ -329,7 +329,7 @@ async def check_ai_access(request: Request):
         try:
             # Call the check_ai_access function we created in SQL
             access_result = await client.rpc('check_ai_access', {
-                'user_id': user["id"]
+                'input_user_id': user["id"]
             }).execute()
             
             if access_result.data and len(access_result.data) > 0:
