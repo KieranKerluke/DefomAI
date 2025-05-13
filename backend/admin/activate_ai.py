@@ -57,29 +57,57 @@ async def activate_ai(request: Request):
         if getattr(update_result, "error", None):
             raise Exception(f"Supabase error updating code: {getattr(update_result.error, 'message', str(update_result.error))}")
         
-        # Update the user's metadata to grant AI access
+        # Update the ai_access_status table to grant AI access
         try:
-            # Simple check if user already has AI access
-            if user.get('has_ai_access'):
-                # If they already have access, just return success
-                return {
-                    "success": True,
-                    "message": "AI access already activated"
-                }
+            # Check if a record already exists
+            status_check = await client.from_("ai_access_status").select("*").eq("user_id", user["id"]).execute()
             
-            # Update the user's metadata to grant AI access
-            user_update = await client.auth.admin.update_user_by_id(
-                user["id"],
-                {"app_metadata": {"has_ai_access": True}}
-            )
+            if status_check.data and len(status_check.data) > 0:
+                # Check if user already has AI access
+                if status_check.data[0].get("has_access"):
+                    # If they already have access, just return success
+                    return {
+                        "success": True,
+                        "message": "AI access already activated"
+                    }
+                
+                # Update existing record
+                await client.from_("ai_access_status").update({
+                    "has_access": True,
+                    "is_suspended": False,
+                    "is_blocked": False,
+                    "status": "active",
+                    "message": "AI access granted",
+                    "code": code,
+                    "updated_at": datetime.now().isoformat()
+                }).eq("user_id", user["id"]).execute()
+            else:
+                # Create new record
+                await client.from_("ai_access_status").insert({
+                    "user_id": user["id"],
+                    "has_access": True,
+                    "is_suspended": False,
+                    "is_blocked": False,
+                    "status": "active",
+                    "message": "AI access granted",
+                    "code": code
+                }).execute()
             
-            # Log the successful update
-            logger.info(f"User metadata updated successfully for {user['email']}")
+            # For backward compatibility, also update the user's metadata
+            try:
+                user_update = await client.auth.admin.update_user_by_id(
+                    user["id"],
+                    {"app_metadata": {"has_ai_access": True}}
+                )
+                logger.info(f"User metadata updated successfully for {user['email']}")
+            except Exception as e:
+                logger.error(f"Error updating user metadata (non-critical): {str(e)}")
+                # Continue anyway - the ai_access_status table is the source of truth now
             
         except Exception as e:
-            logger.error(f"Error updating user metadata: {str(e)}")
+            logger.error(f"Error updating ai_access_status: {str(e)}")
             # Continue anyway - the code is already marked as claimed
-            # This ensures the user can still use the AI features even if there was an error updating their metadata
+            # This ensures the user can still use the AI features even if there was an error updating their status
         
         logger.info(f"AI access activated for user {user['email']} with code {code}")
         

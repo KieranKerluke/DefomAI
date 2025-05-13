@@ -104,7 +104,7 @@ async def list_activation_codes(request: Request, admin_user=Depends(admin_requi
         logger.error(f"Failed to list codes: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list codes: {str(e)}")
 
-@router.delete("/admin/activation-code/{code_id}")
+@router.delete("/admin/activation-codes/{code_id}")
 async def delete_activation_code(code_id: str, request: Request, admin_user=Depends(admin_required)):
     """
     Delete an activation code.
@@ -322,6 +322,33 @@ async def check_ai_access(request: Request):
                 "status": "unauthenticated"
             }
         
+        # Get Supabase client
+        client = await db.client
+        
+        # Use the SQL function to check AI access status
+        try:
+            # Call the check_ai_access function we created in SQL
+            access_result = await client.rpc('check_ai_access', {
+                'user_id': user["id"]
+            }).execute()
+            
+            if access_result.data and len(access_result.data) > 0:
+                access_data = access_result.data[0]
+                
+                # Return the access status from the function
+                return {
+                    "has_access": access_data.get("has_access", False),
+                    "is_suspended": access_data.get("is_suspended", False),
+                    "is_blocked": access_data.get("is_blocked", False),
+                    "message": access_data.get("message", "No AI access"),
+                    "status": access_data.get("status", "no_access"),
+                    "code": access_data.get("code")
+                }
+            
+        except Exception as e:
+            logger.error(f"Error calling check_ai_access function: {str(e)}")
+            # Fall back to the old method if the function call fails
+        
         # Admins automatically have AI access
         if user.get('is_admin'):
             return {
@@ -332,39 +359,21 @@ async def check_ai_access(request: Request):
                 "status": "admin"
             }
             
-        # Get Supabase client
-        client = await db.client
-        
         # Check if user has any status records (blocked, suspended, etc.)
         status_result = await client.from_("ai_access_status").select("*").eq("user_id", user["id"]).execute()
         
         if status_result.data and len(status_result.data) > 0:
             status_data = status_result.data[0]
-            status = status_data.get("status")
-            message = status_data.get("message")
-            code_value = status_data.get("code_value")
             
-            # If user is blocked, return blocked status
-            if status == "blocked":
-                return {
-                    "has_access": False,
-                    "is_suspended": False,
-                    "is_blocked": True,
-                    "message": message or "Your access has been blocked. Please contact support for assistance.",
-                    "status": "blocked",
-                    "code": code_value
-                }
-            
-            # If user is suspended, return suspended status
-            if status == "suspended":
-                return {
-                    "has_access": False,
-                    "is_suspended": True,
-                    "is_blocked": False,
-                    "message": message or "Your access has been temporarily suspended. Please contact support for assistance.",
-                    "status": "suspended",
-                    "code": code_value
-                }
+            # Return the status from the table
+            return {
+                "has_access": status_data.get("has_access", False),
+                "is_suspended": status_data.get("is_suspended", False),
+                "is_blocked": status_data.get("is_blocked", False),
+                "message": status_data.get("message", "No AI access"),
+                "status": status_data.get("status", "no_access"),
+                "code": status_data.get("code")
+            }
         
         # Find the user's activation code
         code_result = await client.from_("ai_activation_codes") \
@@ -373,19 +382,35 @@ async def check_ai_access(request: Request):
             .eq("is_claimed", True) \
             .execute()
             
-        # If no code is found, the user needs to enter a passcode regardless of has_ai_access flag
+        # If no code is found, the user needs to enter a passcode
         if not code_result.data or len(code_result.data) == 0:
-            # Reset the user's AI access flag if it was set
-            has_ai_access = user.get('has_ai_access', False)
-            if has_ai_access:
-                try:
-                    await client.auth.admin.update_user_by_id(
-                        user["id"],
-                        {"app_metadata": {"has_ai_access": False}}
-                    )
-                    logger.warning(f"Reset AI access for user {user.get('email')} - no activation code found")
-                except Exception as e:
-                    logger.error(f"Error updating user metadata: {str(e)}")
+            # Create or update the ai_access_status record
+            try:
+                # Check if a record already exists
+                status_check = await client.from_("ai_access_status").select("id").eq("user_id", user["id"]).execute()
+                
+                if status_check.data and len(status_check.data) > 0:
+                    # Update existing record
+                    await client.from_("ai_access_status").update({
+                        "has_access": False,
+                        "is_suspended": False,
+                        "is_blocked": False,
+                        "status": "no_access",
+                        "message": "AI access required. Please enter an activation code to use the AI features.",
+                        "updated_at": datetime.now().isoformat()
+                    }).eq("user_id", user["id"]).execute()
+                else:
+                    # Create new record
+                    await client.from_("ai_access_status").insert({
+                        "user_id": user["id"],
+                        "has_access": False,
+                        "is_suspended": False,
+                        "is_blocked": False,
+                        "status": "no_access",
+                        "message": "AI access required. Please enter an activation code to use the AI features."
+                    }).execute()
+            except Exception as e:
+                logger.error(f"Error updating ai_access_status: {str(e)}")
             
             return {
                 "has_access": False,
@@ -399,29 +424,78 @@ async def check_ai_access(request: Request):
         # Now check if the code is active or suspended
         code_data = code_result.data[0]
         is_active = code_data.get("is_active", True)
+        code_value = code_data.get("code_value")
         
         if not is_active:
-            # Code is suspended
+            # Code is suspended - update the ai_access_status record
+            try:
+                # Check if a record already exists
+                status_check = await client.from_("ai_access_status").select("id").eq("user_id", user["id"]).execute()
+                
+                if status_check.data and len(status_check.data) > 0:
+                    # Update existing record
+                    await client.from_("ai_access_status").update({
+                        "has_access": False,
+                        "is_suspended": True,
+                        "is_blocked": False,
+                        "status": "suspended",
+                        "message": "Your AI access has been suspended. Please contact support for more information.",
+                        "code": code_value,
+                        "updated_at": datetime.now().isoformat()
+                    }).eq("user_id", user["id"]).execute()
+                else:
+                    # Create new record
+                    await client.from_("ai_access_status").insert({
+                        "user_id": user["id"],
+                        "has_access": False,
+                        "is_suspended": True,
+                        "is_blocked": False,
+                        "status": "suspended",
+                        "message": "Your AI access has been suspended. Please contact support for more information.",
+                        "code": code_value
+                    }).execute()
+            except Exception as e:
+                logger.error(f"Error updating ai_access_status: {str(e)}")
+            
+            # Return suspended status
             return {
                 "has_access": False,
                 "is_suspended": True,
                 "is_blocked": False,
                 "message": "Your AI access has been suspended. Please contact support for more information.",
                 "status": "suspended",
-                "code": code_data.get("code_value")
+                "code": code_value
             }
+        
+        # Code is valid and active - update the ai_access_status record
+        try:
+            # Check if a record already exists
+            status_check = await client.from_("ai_access_status").select("id").eq("user_id", user["id"]).execute()
             
-        # Code is valid and active - ensure the user's has_ai_access flag is set
-        has_ai_access = user.get('has_ai_access', False)
-        if not has_ai_access:
-            try:
-                await client.auth.admin.update_user_by_id(
-                    user["id"],
-                    {"app_metadata": {"has_ai_access": True}}
-                )
-                logger.info(f"Updated AI access flag for user {user.get('email')} with valid activation code")
-            except Exception as e:
-                logger.error(f"Error updating user metadata: {str(e)}")
+            if status_check.data and len(status_check.data) > 0:
+                # Update existing record
+                await client.from_("ai_access_status").update({
+                    "has_access": True,
+                    "is_suspended": False,
+                    "is_blocked": False,
+                    "status": "active",
+                    "message": "AI access granted",
+                    "code": code_value,
+                    "updated_at": datetime.now().isoformat()
+                }).eq("user_id", user["id"]).execute()
+            else:
+                # Create new record
+                await client.from_("ai_access_status").insert({
+                    "user_id": user["id"],
+                    "has_access": True,
+                    "is_suspended": False,
+                    "is_blocked": False,
+                    "status": "active",
+                    "message": "AI access granted",
+                    "code": code_value
+                }).execute()
+        except Exception as e:
+            logger.error(f"Error updating ai_access_status: {str(e)}")
         
         # Grant access
         return {
@@ -430,7 +504,7 @@ async def check_ai_access(request: Request):
             "is_blocked": False,
             "message": "AI access granted",
             "status": "active",
-            "code": code_data.get("code_value")
+            "code": code_value
         }
     except Exception as e:
         logger.error(f"Error checking AI access: {str(e)}")
