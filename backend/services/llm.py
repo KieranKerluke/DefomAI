@@ -29,6 +29,17 @@ RETRY_DELAY = 5
 # litellm.set_verbose=True
 litellm.modify_params=True
 
+# Default OpenRouter models from config
+DEFAULT_OPENROUTER_MODELS = {
+    "deepseek": config.OPENROUTER_DEEPSEEK_MODEL,
+    "llama": config.OPENROUTER_LLAMA_MODEL,
+    "qwen": config.OPENROUTER_QWEN_MODEL,
+    "mistral": config.OPENROUTER_MISTRAL_MODEL
+}
+
+# Default model to use when none is specified
+DEFAULT_MODEL = config.DEFAULT_MODEL
+
 # Constants
 MAX_RETRIES = 3
 RATE_LIMIT_DELAY = 30
@@ -44,32 +55,16 @@ class LLMRetryError(LLMError):
 
 def setup_api_keys() -> None:
     """Set up API keys from environment variables."""
-    providers = ['OPENAI', 'ANTHROPIC', 'GROQ', 'OPENROUTER']
-    for provider in providers:
-        key = getattr(config, f'{provider}_API_KEY')
-        if key:
-            logger.debug(f"API key set for provider: {provider}")
-        else:
-            logger.warning(f"No API key found for provider: {provider}")
-
-    # Set up OpenRouter API base if not already set
-    if config.OPENROUTER_API_KEY and config.OPENROUTER_API_BASE:
-        os.environ['OPENROUTER_API_BASE'] = config.OPENROUTER_API_BASE
-        logger.debug(f"Set OPENROUTER_API_BASE to {config.OPENROUTER_API_BASE}")
-
-    # Set up AWS Bedrock credentials
-    aws_access_key = config.AWS_ACCESS_KEY_ID
-    aws_secret_key = config.AWS_SECRET_ACCESS_KEY
-    aws_region = config.AWS_REGION_NAME
-
-    if aws_access_key and aws_secret_key and aws_region:
-        logger.debug(f"AWS credentials set for Bedrock in region: {aws_region}")
-        # Configure LiteLLM to use AWS credentials
-        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key
-        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_key
-        os.environ['AWS_REGION_NAME'] = aws_region
+    # We're only using OpenRouter now
+    if config.OPENROUTER_API_KEY:
+        logger.debug("OpenRouter API key is set")
+        
+        # Set up OpenRouter API base if configured
+        if config.OPENROUTER_API_BASE:
+            os.environ['OPENROUTER_API_BASE'] = config.OPENROUTER_API_BASE
+            logger.debug(f"Set OPENROUTER_API_BASE to {config.OPENROUTER_API_BASE}")
     else:
-        logger.warning(f"Missing AWS credentials for Bedrock integration - access_key: {bool(aws_access_key)}, secret_key: {bool(aws_secret_key)}, region: {aws_region}")
+        logger.warning("No OpenRouter API key found - LLM functionality will not work properly")
 
 async def handle_error(error: Exception, attempt: int, max_attempts: int) -> None:
     """Handle API errors with appropriate delays and logging."""
@@ -78,9 +73,33 @@ async def handle_error(error: Exception, attempt: int, max_attempts: int) -> Non
     logger.debug(f"Waiting {delay} seconds before retry...")
     await asyncio.sleep(delay)
 
+def get_openrouter_model(model_name: str) -> str:
+    """
+    Map model names to OpenRouter models or return the original if it's already an OpenRouter model.
+    
+    This function allows users to specify a simple model name like "deepseek" and get the full OpenRouter path.
+    If the model name already starts with "openrouter/", it's returned as is.
+    """
+    if model_name.startswith("openrouter/"):
+        return model_name
+        
+    # Check if it's one of our default models
+    if model_name in DEFAULT_OPENROUTER_MODELS:
+        return DEFAULT_OPENROUTER_MODELS[model_name]
+    
+    # If it's a known provider but not fully qualified, prepend openrouter/
+    known_providers = ["deepseek", "meta-llama", "qwen", "mistralai"]
+    for provider in known_providers:
+        if model_name.startswith(f"{provider}/"):
+            return f"openrouter/{model_name}"
+    
+    # If not found, return the default model
+    logger.warning(f"Unknown model: {model_name}, using default: {DEFAULT_MODEL}")
+    return DEFAULT_MODEL
+
 def prepare_params(
     messages: List[Dict[str, Any]],
-    model_name: str,
+    model_name: str = DEFAULT_MODEL,
     temperature: float = 0,
     max_tokens: Optional[int] = None,
     response_format: Optional[Any] = None,
@@ -95,6 +114,9 @@ def prepare_params(
     reasoning_effort: Optional[str] = 'low'
 ) -> Dict[str, Any]:
     """Prepare parameters for the API call."""
+    # Map to OpenRouter model if needed
+    model_name = get_openrouter_model(model_name)
+    
     params = {
         "model": model_name,
         "messages": messages,
@@ -113,14 +135,8 @@ def prepare_params(
 
     # Handle token limits
     if max_tokens is not None:
-        # For Claude 3.7 in Bedrock, do not set max_tokens or max_tokens_to_sample
-        # as it causes errors with inference profiles
-        if model_name.startswith("bedrock/") and "claude-3-7" in model_name:
-            logger.debug(f"Skipping max_tokens for Claude 3.7 model: {model_name}")
-        else:
-            # For all other models, set max_tokens
-            param_name = "max_completion_tokens" if 'o1' in model_name else "max_tokens"
-            params[param_name] = max_tokens
+        # Use max_tokens for all models
+        params["max_tokens"] = max_tokens
 
     # Add tools if provided
     if tools:
@@ -129,14 +145,6 @@ def prepare_params(
             "tool_choice": tool_choice
         })
         logger.debug(f"Added {len(tools)} tools to API parameters")
-
-    # # Add Claude-specific headers
-    if "claude" in model_name.lower() or "anthropic" in model_name.lower():
-        params["extra_headers"] = {
-            # "anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"
-            "anthropic-beta": "output-128k-2025-02-19"
-        }
-        logger.debug("Added Claude-specific headers")
 
     # Add OpenRouter-specific parameters
     if model_name.startswith("openrouter/"):
@@ -154,98 +162,12 @@ def prepare_params(
             params["extra_headers"] = extra_headers
             logger.debug(f"Added OpenRouter site URL and app name to headers")
 
-    # Add Bedrock-specific parameters
-    if model_name.startswith("bedrock/"):
-        logger.debug(f"Preparing AWS Bedrock parameters for model: {model_name}")
-
-        if not model_id and "anthropic.claude-3-7-sonnet" in model_name:
-            params["model_id"] = "arn:aws:bedrock:us-west-2:935064898258:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-            logger.debug(f"Auto-set model_id for Claude 3.7 Sonnet: {params['model_id']}")
-
-    # Apply Anthropic prompt caching (minimal implementation)
-    # Check model name *after* potential modifications (like adding bedrock/ prefix)
-    effective_model_name = params.get("model", model_name) # Use model from params if set, else original
-    if "claude" in effective_model_name.lower() or "anthropic" in effective_model_name.lower():
-        messages = params["messages"] # Direct reference, modification affects params
-
-        # Ensure messages is a list
-        if not isinstance(messages, list):
-            return params # Return early if messages format is unexpected
-
-        # 1. Process the first message if it's a system prompt with string content
-        if messages and messages[0].get("role") == "system":
-            content = messages[0].get("content")
-            if isinstance(content, str):
-                # Wrap the string content in the required list structure
-                messages[0]["content"] = [
-                    {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
-                ]
-            elif isinstance(content, list):
-                 # If content is already a list, check if the first text block needs cache_control
-                 for item in content:
-                     if isinstance(item, dict) and item.get("type") == "text":
-                         if "cache_control" not in item:
-                             item["cache_control"] = {"type": "ephemeral"}
-                             break # Apply to the first text block only for system prompt
-
-        # 2. Find and process relevant user and assistant messages
-        last_user_idx = -1
-        second_last_user_idx = -1
-        last_assistant_idx = -1
-
-        for i in range(len(messages) - 1, -1, -1):
-            role = messages[i].get("role")
-            if role == "user":
-                if last_user_idx == -1:
-                    last_user_idx = i
-                elif second_last_user_idx == -1:
-                    second_last_user_idx = i
-            elif role == "assistant":
-                if last_assistant_idx == -1:
-                    last_assistant_idx = i
-
-            # Stop searching if we've found all needed messages
-            if last_user_idx != -1 and second_last_user_idx != -1 and last_assistant_idx != -1:
-                 break
-
-        # Helper function to apply cache control
-        def apply_cache_control(message_idx: int, message_role: str):
-            if message_idx == -1:
-                return
-
-            message = messages[message_idx]
-            content = message.get("content")
-
-            if isinstance(content, str):
-                message["content"] = [
-                    {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
-                ]
-            elif isinstance(content, list):
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        if "cache_control" not in item:
-                           item["cache_control"] = {"type": "ephemeral"}
-
-        # Apply cache control to the identified messages
-        apply_cache_control(last_user_idx, "last user")
-        apply_cache_control(second_last_user_idx, "second last user")
-        apply_cache_control(last_assistant_idx, "last assistant")
-
-    # Add reasoning_effort for Anthropic models if enabled
-    use_thinking = enable_thinking if enable_thinking is not None else False
-    is_anthropic = "anthropic" in effective_model_name.lower() or "claude" in effective_model_name.lower()
-
-    if is_anthropic and use_thinking:
-        effort_level = reasoning_effort if reasoning_effort else 'low'
-        params["reasoning_effort"] = effort_level
-        params["temperature"] = 1.0 # Required by Anthropic when reasoning_effort is used
-        logger.info(f"Anthropic thinking enabled with reasoning_effort='{effort_level}'")
-
+    # No Anthropic-specific code needed anymore
     return params
 
 async def make_llm_api_call(
-    messages: List[Dict[str, Any]],
-    model_name: str,
+    messages: List[Dict[str, Any]] = None,
+    model_name: str = DEFAULT_MODEL,
     response_format: Optional[Any] = None,
     temperature: float = 0,
     max_tokens: Optional[int] = None,
@@ -260,11 +182,12 @@ async def make_llm_api_call(
     reasoning_effort: Optional[str] = 'low'
 ) -> Union[Dict[str, Any], AsyncGenerator]:
     """
-    Make an API call to a language model using LiteLLM.
+    Make an API call to a language model using LiteLLM with OpenRouter.
 
     Args:
         messages: List of message dictionaries for the conversation
-        model_name: Name of the model to use (e.g., "gpt-4", "claude-3", "openrouter/openai/gpt-4", "bedrock/anthropic.claude-3-sonnet-20240229-v1:0")
+        model_name: Name of the model to use (e.g., "deepseek", "llama", "qwen", "mistral",
+                   or full paths like "openrouter/deepseek/deepseek-chat")
         response_format: Desired format for the response
         temperature: Sampling temperature (0-1)
         max_tokens: Maximum tokens in the response
@@ -274,9 +197,9 @@ async def make_llm_api_call(
         api_base: Override default API base URL
         stream: Whether to stream the response
         top_p: Top-p sampling parameter
-        model_id: Optional ARN for Bedrock inference profiles
-        enable_thinking: Whether to enable thinking
-        reasoning_effort: Level of reasoning effort
+        model_id: Optional model ID (not used with OpenRouter)
+        enable_thinking: Whether to enable thinking (not used with OpenRouter)
+        reasoning_effort: Level of reasoning effort (not used with OpenRouter)
 
     Returns:
         Union[Dict[str, Any], AsyncGenerator]: API response or stream
@@ -285,6 +208,10 @@ async def make_llm_api_call(
         LLMRetryError: If API call fails after retries
         LLMError: For other API-related errors
     """
+    # Set default messages if none provided
+    if messages is None:
+        messages = [{"role": "user", "content": "Hello, can you give me a quick test response?"}]
+        
     # debug <timestamp>.json messages
     logger.info(f"Making LLM API call to model: {model_name} (Thinking: {enable_thinking}, Effort: {reasoning_effort})")
     logger.info(f"📡 API Call: Using model {model_name}")
@@ -340,20 +267,32 @@ async def test_openrouter():
     ]
 
     try:
-        # Test with standard OpenRouter model
-        print("\n--- Testing standard OpenRouter model ---")
+        # Test with deepseek model
+        print("\n--- Testing deepseek model ---")
         response = await make_llm_api_call(
-            model_name="openrouter/openai/gpt-4o-mini",
+            model_name="openrouter/deepseek/deepseek-chat",
             messages=test_messages,
             temperature=0.7,
             max_tokens=100
         )
         print(f"Response: {response.choices[0].message.content}")
+        print(f"Model used: {response.model}")
 
-        # Test with deepseek model
-        print("\n--- Testing deepseek model ---")
+        # Test with Llama 3.1 model
+        print("\n--- Testing Llama 3.1 model ---")
         response = await make_llm_api_call(
-            model_name="openrouter/deepseek/deepseek-r1-distill-llama-70b",
+            model_name="openrouter/meta-llama/llama-3.1-8b-instruct",
+            messages=test_messages,
+            temperature=0.7,
+            max_tokens=100
+        )
+        print(f"Response: {response.choices[0].message.content}")
+        print(f"Model used: {response.model}")
+
+        # Test with Qwen model
+        print("\n--- Testing Qwen model ---")
+        response = await make_llm_api_call(
+            model_name="openrouter/qwen/qwen3-235b-a22b",
             messages=test_messages,
             temperature=0.7,
             max_tokens=100
@@ -364,7 +303,7 @@ async def test_openrouter():
         # Test with Mistral model
         print("\n--- Testing Mistral model ---")
         response = await make_llm_api_call(
-            model_name="openrouter/mistralai/mixtral-8x7b-instruct",
+            model_name="openrouter/mistralai/mistral-7b-instruct",
             messages=test_messages,
             temperature=0.7,
             max_tokens=100
@@ -377,35 +316,48 @@ async def test_openrouter():
         print(f"Error testing OpenRouter: {str(e)}")
         return False
 
-async def test_bedrock():
-    """Test the AWS Bedrock integration with a simple query."""
+# Bedrock testing removed as we're only using OpenRouter models now
+
+async def test_all_openrouter_models():
+    """Test all the specified OpenRouter models."""
+    models = [
+        "openrouter/deepseek/deepseek-chat",
+        "openrouter/meta-llama/llama-3.1-8b-instruct",
+        "openrouter/qwen/qwen3-235b-a22b",
+        "openrouter/mistralai/mistral-7b-instruct"
+    ]
+    
     test_messages = [
         {"role": "user", "content": "Hello, can you give me a quick test response?"}
     ]
-
-    try:
-        response = await make_llm_api_call(
-            model_name="bedrock/anthropic.claude-3-7-sonnet-20250219-v1:0",
-            model_id="arn:aws:bedrock:us-west-2:935064898258:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            messages=test_messages,
-            temperature=0.7,
-            # Claude 3.7 has issues with max_tokens, so omit it
-            # max_tokens=100
-        )
-        print(f"Response: {response.choices[0].message.content}")
-        print(f"Model used: {response.model}")
-
-        return True
-    except Exception as e:
-        print(f"Error testing Bedrock: {str(e)}")
-        return False
+    
+    results = {}
+    
+    for model in models:
+        try:
+            print(f"\n--- Testing {model} ---")
+            response = await make_llm_api_call(
+                model_name=model,
+                messages=test_messages,
+                temperature=0.7,
+                max_tokens=100
+            )
+            print(f"Response: {response.choices[0].message.content}")
+            print(f"Model used: {response.model}")
+            results[model] = True
+        except Exception as e:
+            print(f"Error testing {model}: {str(e)}")
+            results[model] = False
+    
+    return all(results.values())
 
 if __name__ == "__main__":
     import asyncio
 
-    test_success = asyncio.run(test_bedrock())
+    # Test OpenRouter models instead of Bedrock
+    test_success = asyncio.run(test_all_openrouter_models())
 
     if test_success:
-        print("\n✅ integration test completed successfully!")
+        print("\n✅ All OpenRouter models tested successfully!")
     else:
-        print("\n❌ Bedrock integration test failed!")
+        print("\n❌ Some OpenRouter model tests failed!")

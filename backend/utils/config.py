@@ -108,22 +108,18 @@ class Configuration:
             return self.STRIPE_TIER_200_1000_ID_STAGING
         return self.STRIPE_TIER_200_1000_ID_PROD
     
-    # LLM API keys
-    ANTHROPIC_API_KEY: str = None
-    OPENAI_API_KEY: Optional[str] = None
-    GROQ_API_KEY: Optional[str] = None
+    # LLM API keys - Only using OpenRouter now
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_API_BASE: Optional[str] = "https://openrouter.ai/api/v1"
-    OR_SITE_URL: Optional[str] = "https://kortix.ai"
-    OR_APP_NAME: Optional[str] = "Kortix AI"    
     
-    # AWS Bedrock credentials
-    AWS_ACCESS_KEY_ID: Optional[str] = None
-    AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    AWS_REGION_NAME: Optional[str] = None
+    # OpenRouter model configurations
+    OPENROUTER_DEEPSEEK_MODEL: str = "openrouter/deepseek/deepseek-chat"
+    OPENROUTER_LLAMA_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct"
+    OPENROUTER_QWEN_MODEL: str = "openrouter/qwen/qwen3-235b-a22b"
+    OPENROUTER_MISTRAL_MODEL: str = "openrouter/mistralai/mistral-7b-instruct"
     
-    # Model configuration
-    MODEL_TO_USE: Optional[str] = "anthropic/claude-3-7-sonnet-latest"
+    # Default model to use
+    DEFAULT_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct"
     
     # Supabase configuration
     SUPABASE_URL: str
