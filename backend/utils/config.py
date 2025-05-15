@@ -111,6 +111,8 @@ class Configuration:
     # LLM API keys - Only using OpenRouter now
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_API_BASE: Optional[str] = "https://openrouter.ai/api/v1"
+    OR_SITE_URL: Optional[str] = "https://defom-ai.vercel.app/"
+    OR_APP_NAME: Optional[str] = "DefomAI"
     
     # OpenRouter model configurations
     OPENROUTER_DEEPSEEK_MODEL: str = "openrouter/deepseek/deepseek-chat"
