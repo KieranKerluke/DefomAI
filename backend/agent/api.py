@@ -625,9 +625,6 @@ async def stream_agent_run(
             # Queue to communicate between listeners and the main generator loop
             message_queue = asyncio.Queue()
 
-            # Declare variables that will be accessed in nested functions
-            nonlocal terminate_stream
-
             async def listen_messages():
                 try:
                     # Initialize pubsub connections if they don't exist yet
