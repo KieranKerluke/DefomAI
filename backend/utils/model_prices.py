@@ -36,7 +36,7 @@ CUSTOM_MODEL_PRICES = {
     },
 }
 
-def register_custom_model_prices() -> None:
+def register_custom_model_prices():
     """
     Register custom model pricing with LiteLLM.
     
@@ -45,6 +45,6 @@ def register_custom_model_prices() -> None:
     """
     for model_name, pricing in CUSTOM_MODEL_PRICES.items():
         litellm.register_model(
-            model_name=model_name,
+            model=model_name,
             model_info=pricing
         )
