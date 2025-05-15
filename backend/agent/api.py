@@ -38,17 +38,61 @@ MODEL_NAME_ALIASES = {
     "qwen3": config.OPENROUTER_QWEN_MODEL,
     "mistral": config.OPENROUTER_MISTRAL_MODEL,
     
-    # Task-specific model aliases
-    "chat": config.MODEL_FOR_CHAT,                      # Mistral 7B for casual chat
-    "complex_dialogue": config.MODEL_FOR_COMPLEX_DIALOGUE,  # Qwen3 for complex conversations
-    "summarization": config.MODEL_FOR_SUMMARIZATION,    # LLaMA 3.1 for summarizing
-    "code": config.MODEL_FOR_CODE,                      # DeepSeek for code generation
-    "fix_code": config.MODEL_FOR_CODE_FIX,              # DeepSeek for fixing code
-    "math": config.MODEL_FOR_MATH,                      # DeepSeek for math reasoning
-    "multilingual": config.MODEL_FOR_MULTILINGUAL,      # Qwen3 for multilingual support
-    "tool_use": config.MODEL_FOR_TOOL_USE,              # Qwen3 for tool use/API calls
-    "fast": config.MODEL_FOR_FAST_RESPONSE,             # Mistral 7B for fast responses
-    "complex": config.MODEL_FOR_COMPLEX_TASKS,          # Qwen3 for complex tasks
+    # Task-specific model aliases with multiple variations
+    # Chat - Mistral 7B
+    "chat": config.MODEL_FOR_CHAT,
+    "conversation": config.MODEL_FOR_CHAT,
+    "qa": config.MODEL_FOR_CHAT,
+    "question": config.MODEL_FOR_CHAT,
+    
+    # Complex dialogue - Qwen3
+    "complex_dialogue": config.MODEL_FOR_COMPLEX_DIALOGUE,
+    "deep_conversation": config.MODEL_FOR_COMPLEX_DIALOGUE,
+    "multi_turn": config.MODEL_FOR_COMPLEX_DIALOGUE,
+    
+    # Summarization - LLaMA 3.1
+    "summarization": config.MODEL_FOR_SUMMARIZATION,
+    "summarize": config.MODEL_FOR_SUMMARIZATION,
+    "summary": config.MODEL_FOR_SUMMARIZATION,
+    
+    # Code generation - DeepSeek
+    "code": config.MODEL_FOR_CODE,
+    "coding": config.MODEL_FOR_CODE,
+    "programming": config.MODEL_FOR_CODE,
+    "generate_code": config.MODEL_FOR_CODE,
+    
+    # Code fixing - DeepSeek
+    "fix_code": config.MODEL_FOR_CODE_FIX,
+    "debug": config.MODEL_FOR_CODE_FIX,
+    "refactor": config.MODEL_FOR_CODE_FIX,
+    
+    # Math reasoning - DeepSeek
+    "math": config.MODEL_FOR_MATH,
+    "logic": config.MODEL_FOR_MATH,
+    "reasoning": config.MODEL_FOR_MATH,
+    "calculation": config.MODEL_FOR_MATH,
+    
+    # Multilingual - Qwen3
+    "multilingual": config.MODEL_FOR_MULTILINGUAL,
+    "translation": config.MODEL_FOR_MULTILINGUAL,
+    "language": config.MODEL_FOR_MULTILINGUAL,
+    
+    # Tool use - Qwen3
+    "tool_use": config.MODEL_FOR_TOOL_USE,
+    "api": config.MODEL_FOR_TOOL_USE,
+    "function_call": config.MODEL_FOR_TOOL_USE,
+    "agent": config.MODEL_FOR_TOOL_USE,
+    
+    # Fast responses - Mistral 7B
+    "fast": config.MODEL_FOR_FAST_RESPONSE,
+    "quick": config.MODEL_FOR_FAST_RESPONSE,
+    "lightweight": config.MODEL_FOR_FAST_RESPONSE,
+    
+    # Complex tasks - Qwen3
+    "complex": config.MODEL_FOR_COMPLEX_TASKS,
+    "research": config.MODEL_FOR_COMPLEX_TASKS,
+    "detailed": config.MODEL_FOR_COMPLEX_TASKS,
+    "legal": config.MODEL_FOR_COMPLEX_TASKS,
 
     # Also include full model paths as keys to ensure they map to themselves
     config.OPENROUTER_DEEPSEEK_MODEL: config.OPENROUTER_DEEPSEEK_MODEL,
@@ -379,15 +423,51 @@ async def start_agent(
     model_name = body.model_name
     logger.info(f"Request parameters: task_type={task_type}, model_name={model_name}")
     
+    # If no task_type specified but model_name is DeepSeek, set task_type to 'code'
+    # This ensures we don't always default to DeepSeek for all tasks
+    if task_type is None and (model_name == "deepseek" or 
+                             model_name == config.OPENROUTER_DEEPSEEK_MODEL or
+                             "deepseek" in str(model_name).lower()):
+        task_type = "code"
+        logger.info(f"DeepSeek model detected, setting task_type to 'code'")
+    
+    # If no task_type is provided, try to determine it from the last message
+    if task_type is None:
+        # Set a default task type based on common use case
+        task_type = "chat"  # Default to casual chat if we can't determine
+        logger.info(f"No task_type provided, defaulting to '{task_type}'")
+    
+    # Ensure task_type is lowercase for consistent matching
+    if task_type is not None:
+        task_type = task_type.lower()
+        logger.info(f"Normalized task_type to lowercase: '{task_type}'")
+    
     # Priority: 1. task_type (if provided), 2. model_name (if provided), 3. default model
     if task_type is not None:
         # If task type is provided, use the appropriate model for that task
-        model_name = MODEL_NAME_ALIASES.get(task_type, config.DEFAULT_MODEL)
-        logger.info(f"Using model for task type '{task_type}': {model_name}")
+        model_name = MODEL_NAME_ALIASES.get(task_type)
+        
+        # If exact match not found, try to find a suitable category
+        if model_name is None:
+            if any(keyword in task_type for keyword in ['chat', 'conversation', 'talk', 'discuss']):
+                model_name = config.MODEL_FOR_CHAT
+                logger.info(f"Using chat model for '{task_type}': {model_name}")
+            elif any(keyword in task_type for keyword in ['code', 'program', 'function', 'algorithm']):
+                model_name = config.MODEL_FOR_CODE
+                logger.info(f"Using code model for '{task_type}': {model_name}")
+            elif any(keyword in task_type for keyword in ['summary', 'summarize', 'summarization']):
+                model_name = config.MODEL_FOR_SUMMARIZATION
+                logger.info(f"Using summarization model for '{task_type}': {model_name}")
+            else:
+                # Default to chat for unrecognized task types
+                model_name = config.MODEL_FOR_CHAT
+                logger.info(f"Using default chat model for unrecognized task type '{task_type}': {model_name}")
+        else:
+            logger.info(f"Using model for task type '{task_type}': {model_name}")
     elif model_name is None:
-        # If neither task_type nor model_name provided, use default
-        model_name = config.DEFAULT_MODEL
-        logger.info(f"Using default model: {model_name}")
+        # If neither task_type nor model_name provided, use default chat model
+        model_name = config.MODEL_FOR_CHAT
+        logger.info(f"No task_type or model_name provided, using chat model: {model_name}")
     else:
         # If model_name is provided but not task_type, resolve any aliases
         resolved_model = MODEL_NAME_ALIASES.get(model_name, model_name)
@@ -545,11 +625,26 @@ async def stream_agent_run(
             # Queue to communicate between listeners and the main generator loop
             message_queue = asyncio.Queue()
 
+            # Declare variables that will be accessed in nested functions
+            nonlocal terminate_stream
+
             async def listen_messages():
                 try:
+                    # Initialize pubsub connections if they don't exist yet
+                    nonlocal pubsub_response, pubsub_control
+                    
+                    if pubsub_response is None:
+                        pubsub_response = await redis.create_pubsub()
+                        await pubsub_response.subscribe(response_channel)
+                        
+                    if pubsub_control is None:
+                        pubsub_control = await redis.create_pubsub()
+                        await pubsub_control.subscribe(control_channel)
+                    
+                    # Get readers for both channels
                     response_reader = pubsub_response.listen()
                     control_reader = pubsub_control.listen()
-                    
+                        
                     # Wrap the async generators in safer task handlers
                     async def safe_next(reader, channel_name):
                         try:

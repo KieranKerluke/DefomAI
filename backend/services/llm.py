@@ -18,6 +18,7 @@ from openai import OpenAIError
 import litellm
 from utils.logger import logger
 from utils.config import config
+from utils.model_prices import register_custom_model_prices
 from datetime import datetime
 import traceback
 
@@ -314,8 +315,9 @@ async def make_llm_api_call(
     logger.error(error_msg, exc_info=True)
     raise LLMRetryError(error_msg)
 
-# Initialize API keys on module import
+# Initialize API keys and register custom model pricing on module import
 setup_api_keys()
+register_custom_model_prices()
 
 # Test code for OpenRouter integration
 async def test_openrouter():

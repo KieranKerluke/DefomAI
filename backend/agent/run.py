@@ -40,6 +40,39 @@ async def run_agent(
     enable_context_manager: bool = True
 ):
     """Run the development agent with specified configuration."""
+    # If task_type is provided, ensure we're using the correct model for that task
+    if task_type is not None:
+        from agent.api import MODEL_NAME_ALIASES
+        print(f"MODEL_NAME_ALIASES keys: {list(MODEL_NAME_ALIASES.keys())}")
+        print(f"Looking up task_type: '{task_type}' in MODEL_NAME_ALIASES")
+        
+        # Force lowercase for consistent matching
+        task_type_lower = task_type.lower()
+        task_model = MODEL_NAME_ALIASES.get(task_type_lower)
+        
+        if task_model:
+            model_name = task_model
+            print(f"🚀 Using task-specific model for '{task_type_lower}': {model_name}")
+        else:
+            # If exact match not found, try to find a suitable category
+            if any(keyword in task_type_lower for keyword in ['chat', 'conversation', 'talk', 'discuss']):
+                model_name = config.MODEL_FOR_CHAT
+                print(f"🚀 Using chat model for '{task_type_lower}': {model_name}")
+            elif any(keyword in task_type_lower for keyword in ['code', 'program', 'function', 'algorithm']):
+                model_name = config.MODEL_FOR_CODE
+                print(f"🚀 Using code model for '{task_type_lower}': {model_name}")
+            elif any(keyword in task_type_lower for keyword in ['summary', 'summarize', 'summarization']):
+                model_name = config.MODEL_FOR_SUMMARIZATION
+                print(f"🚀 Using summarization model for '{task_type_lower}': {model_name}")
+            else:
+                # Default to chat for unrecognized task types
+                model_name = config.MODEL_FOR_CHAT
+                print(f"🚀 Using default chat model for unrecognized task type '{task_type_lower}': {model_name}")
+    else:
+        # If no task type provided, default to chat model
+        model_name = config.MODEL_FOR_CHAT
+        print(f"🚀 No task type provided, using default chat model: {model_name}")
+    
     print(f"🚀 Starting agent with model: {model_name} for task type: {task_type}")
 
     thread_manager = ThreadManager()
