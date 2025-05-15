@@ -73,6 +73,42 @@ async def handle_error(error: Exception, attempt: int, max_attempts: int) -> Non
     logger.debug(f"Waiting {delay} seconds before retry...")
     await asyncio.sleep(delay)
 
+def get_model_for_task(task_type: str) -> str:
+    """
+    Select the appropriate model based on the task type.
+    
+    Args:
+        task_type: The type of task to perform (chat, code, summarization, etc.)
+        
+    Returns:
+        The full model path for the appropriate model for this task
+    """
+    task_type = task_type.lower()
+    
+    if task_type in ['chat', 'conversation', 'qa', 'question']:
+        return config.MODEL_FOR_CHAT
+    elif task_type in ['complex_dialogue', 'deep_conversation', 'multi_turn']:
+        return config.MODEL_FOR_COMPLEX_DIALOGUE
+    elif task_type in ['summarize', 'summarization', 'summary']:
+        return config.MODEL_FOR_SUMMARIZATION
+    elif task_type in ['code', 'coding', 'programming', 'generate_code']:
+        return config.MODEL_FOR_CODE
+    elif task_type in ['fix_code', 'debug', 'refactor']:
+        return config.MODEL_FOR_CODE_FIX
+    elif task_type in ['math', 'logic', 'reasoning', 'calculation']:
+        return config.MODEL_FOR_MATH
+    elif task_type in ['multilingual', 'translation', 'language']:
+        return config.MODEL_FOR_MULTILINGUAL
+    elif task_type in ['tool_use', 'api', 'function_call', 'agent']:
+        return config.MODEL_FOR_TOOL_USE
+    elif task_type in ['fast', 'quick', 'lightweight']:
+        return config.MODEL_FOR_FAST_RESPONSE
+    elif task_type in ['complex', 'research', 'detailed', 'legal']:
+        return config.MODEL_FOR_COMPLEX_TASKS
+    else:
+        # Default to the general-purpose model
+        return config.DEFAULT_MODEL
+
 def get_openrouter_model(model_name: str) -> str:
     """
     Map model names to OpenRouter models or return the original if it's already an OpenRouter model.
@@ -134,9 +170,20 @@ def prepare_params(
         params["model_id"] = model_id
 
     # Handle token limits
-    if max_tokens is not None:
-        # Use max_tokens for all models
-        params["max_tokens"] = max_tokens
+    # For free tier, we need to be careful about token limits
+    # Default to a reasonable limit if not specified
+    if max_tokens is None:
+        # Set a conservative default for free tier (2000 tokens)
+        max_tokens = 2000
+        logger.debug(f"No max_tokens specified, using default of {max_tokens} for free tier")
+    else:
+        # Cap max_tokens to a reasonable limit for free tier
+        if max_tokens > 4000:
+            logger.warning(f"Requested max_tokens {max_tokens} exceeds free tier recommendation, capping at 4000")
+            max_tokens = 4000
+            
+    # Set the max_tokens parameter
+    params["max_tokens"] = max_tokens
 
     # Add tools if provided
     if tools:
@@ -168,6 +215,7 @@ def prepare_params(
 async def make_llm_api_call(
     messages: List[Dict[str, Any]] = None,
     model_name: str = DEFAULT_MODEL,
+    task_type: Optional[str] = None,
     response_format: Optional[Any] = None,
     temperature: float = 0,
     max_tokens: Optional[int] = None,
@@ -188,6 +236,10 @@ async def make_llm_api_call(
         messages: List of message dictionaries for the conversation
         model_name: Name of the model to use (e.g., "deepseek", "llama", "qwen", "mistral",
                    or full paths like "openrouter/deepseek/deepseek-chat")
+        task_type: Type of task being performed, which will automatically select the optimal model.
+                  Options include: 'chat', 'complex_dialogue', 'summarization', 'code', 'fix_code',
+                  'math', 'multilingual', 'tool_use', 'fast', 'complex'.
+                  If provided, this overrides the model_name parameter.
         response_format: Desired format for the response
         temperature: Sampling temperature (0-1)
         max_tokens: Maximum tokens in the response
@@ -211,6 +263,12 @@ async def make_llm_api_call(
     # Set default messages if none provided
     if messages is None:
         messages = [{"role": "user", "content": "Hello, can you give me a quick test response?"}]
+    
+    # If task_type is provided, select the appropriate model for the task
+    if task_type is not None:
+        task_specific_model = get_model_for_task(task_type)
+        logger.info(f"Task type '{task_type}' detected, using model: {task_specific_model}")
+        model_name = task_specific_model
         
     # debug <timestamp>.json messages
     logger.info(f"Making LLM API call to model: {model_name} (Thinking: {enable_thinking}, Effort: {reasoning_effort})")

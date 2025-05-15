@@ -115,13 +115,25 @@ class Configuration:
     OR_APP_NAME: Optional[str] = "DefomAI"
     
     # OpenRouter model configurations - using free versions
-    OPENROUTER_DEEPSEEK_MODEL: str = "openrouter/deepseek/deepseek-chat:free"
+    OPENROUTER_DEEPSEEK_MODEL: str = "openrouter/deepseek/deepseek-chat-v3-0324:free"
     OPENROUTER_LLAMA_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct:free"
     OPENROUTER_QWEN_MODEL: str = "openrouter/qwen/qwen3-235b-a22b:free"
     OPENROUTER_MISTRAL_MODEL: str = "openrouter/mistralai/mistral-7b-instruct:free"
     
     # Default model to use
     DEFAULT_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct:free"
+    
+    # Task-specific model assignments
+    MODEL_FOR_CHAT: str = "openrouter/mistralai/mistral-7b-instruct:free"           # Casual chat/Q&A
+    MODEL_FOR_COMPLEX_DIALOGUE: str = "openrouter/qwen/qwen3-235b-a22b:free"       # Complex multi-turn conversation
+    MODEL_FOR_SUMMARIZATION: str = "openrouter/meta-llama/llama-3.1-8b-instruct:free" # Summarizing texts
+    MODEL_FOR_CODE: str = "openrouter/deepseek/deepseek-chat-v3-0324:free"    # Code generation
+    MODEL_FOR_CODE_FIX: str = "openrouter/deepseek/deepseek-chat-v3-0324:free" # Fixing/improving code
+    MODEL_FOR_MATH: str = "openrouter/deepseek/deepseek-chat-v3-0324:free"    # Math reasoning, logic
+    MODEL_FOR_MULTILINGUAL: str = "openrouter/qwen/qwen3-235b-a22b:free"           # Multilingual support
+    MODEL_FOR_TOOL_USE: str = "openrouter/qwen/qwen3-235b-a22b:free"               # Tool use, API calls
+    MODEL_FOR_FAST_RESPONSE: str = "openrouter/mistralai/mistral-7b-instruct:free" # Low-resource fallback
+    MODEL_FOR_COMPLEX_TASKS: str = "openrouter/qwen/qwen3-235b-a22b:free"          # Highly complex instructions
     
     # Supabase configuration
     SUPABASE_URL: str
