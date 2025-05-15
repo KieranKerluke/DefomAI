@@ -43,8 +43,8 @@ def register_custom_model_prices():
     This function adds pricing information for OpenRouter models that
     aren't included in the default LiteLLM pricing configuration.
     """
+    # Instead of using register_model, directly update the model_cost map
+    # This is more reliable across different LiteLLM versions
     for model_name, pricing in CUSTOM_MODEL_PRICES.items():
-        litellm.register_model(
-            model=model_name,
-            model_info=pricing
-        )
+        # Add the model pricing directly to the litellm.model_cost dictionary
+        litellm.model_cost[model_name] = pricing
