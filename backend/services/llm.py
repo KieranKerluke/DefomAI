@@ -321,10 +321,10 @@ async def test_openrouter():
 async def test_all_openrouter_models():
     """Test all the specified OpenRouter models."""
     models = [
-        "openrouter/deepseek/deepseek-chat",
-        "openrouter/meta-llama/llama-3.1-8b-instruct",
-        "openrouter/qwen/qwen3-235b-a22b",
-        "openrouter/mistralai/mistral-7b-instruct"
+        "openrouter/deepseek/deepseek-chat:free",
+        "openrouter/meta-llama/llama-3.1-8b-instruct:free",
+        "openrouter/qwen/qwen3-235b-a22b:free",
+        "openrouter/mistralai/mistral-7b-instruct:free"
     ]
     
     test_messages = [

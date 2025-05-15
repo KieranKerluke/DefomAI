@@ -7,44 +7,70 @@ This script tests the OpenRouter models configured in the LLM service.
 import asyncio
 from services.llm import make_llm_api_call, DEFAULT_OPENROUTER_MODELS
 
-async def test_model(model_name):
-    """Test a specific model with a simple query."""
-    print(f"\n--- Testing {model_name} ---")
+async def test_openrouter():
+    """Test the OpenRouter integration with a simple query."""
+    test_messages = [
+        {"role": "user", "content": "Hello, can you give me a quick test response?"}
+    ]
+
     try:
+        # Test with deepseek model
+        print("\n--- Testing deepseek model ---")
         response = await make_llm_api_call(
-            model_name=model_name,
-            messages=[{"role": "user", "content": "Hello, what can you do for me?"}],
+            model_name="openrouter/deepseek/deepseek-chat:free",
+            messages=test_messages,
             temperature=0.7,
             max_tokens=100
         )
         print(f"Response: {response.choices[0].message.content}")
         print(f"Model used: {response.model}")
+
+        # Test with Llama 3.1 model
+        print("\n--- Testing Llama 3.1 model ---")
+        response = await make_llm_api_call(
+            model_name="openrouter/meta-llama/llama-3.1-8b-instruct:free",
+            messages=test_messages,
+            temperature=0.7,
+            max_tokens=100
+        )
+        print(f"Response: {response.choices[0].message.content}")
+        print(f"Model used: {response.model}")
+
+        # Test with Qwen model
+        print("\n--- Testing Qwen model ---")
+        response = await make_llm_api_call(
+            model_name="openrouter/qwen/qwen3-235b-a22b:free",
+            messages=test_messages,
+            temperature=0.7,
+            max_tokens=100
+        )
+        print(f"Response: {response.choices[0].message.content}")
+        print(f"Model used: {response.model}")
+
+        # Test with Mistral model
+        print("\n--- Testing Mistral model ---")
+        response = await make_llm_api_call(
+            model_name="openrouter/mistralai/mistral-7b-instruct:free",
+            messages=test_messages,
+            temperature=0.7,
+            max_tokens=100
+        )
+        print(f"Response: {response.choices[0].message.content}")
+        print(f"Model used: {response.model}")
+
         return True
     except Exception as e:
-        print(f"Error testing {model_name}: {str(e)}")
+        print(f"Error testing OpenRouter: {str(e)}")
         return False
 
 async def main():
-    """Test all configured OpenRouter models."""
-    print("Testing OpenRouter models...")
-    
-    results = {}
-    
-    # Test each model
-    for name, model in DEFAULT_OPENROUTER_MODELS.items():
-        print(f"\nTesting {name} model: {model}")
-        results[name] = await test_model(model)
-    
-    # Print summary
-    print("\n--- Test Summary ---")
-    for name, success in results.items():
-        status = "✅ SUCCESS" if success else "❌ FAILED"
-        print(f"{name}: {status}")
-    
-    if all(results.values()):
-        print("\n✅ All OpenRouter models tested successfully!")
+    """Test the OpenRouter integration."""
+    print("Testing OpenRouter...")
+    result = await test_openrouter()
+    if result:
+        print("\n✅ OpenRouter integration tested successfully!")
     else:
-        print("\n❌ Some OpenRouter model tests failed!")
+        print("\n❌ OpenRouter integration test failed!")
 
 if __name__ == "__main__":
     asyncio.run(main())

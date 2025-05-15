@@ -114,14 +114,14 @@ class Configuration:
     OR_SITE_URL: Optional[str] = "https://defom-ai.vercel.app/"
     OR_APP_NAME: Optional[str] = "DefomAI"
     
-    # OpenRouter model configurations
-    OPENROUTER_DEEPSEEK_MODEL: str = "openrouter/deepseek/deepseek-chat"
-    OPENROUTER_LLAMA_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct"
-    OPENROUTER_QWEN_MODEL: str = "openrouter/qwen/qwen3-235b-a22b"
-    OPENROUTER_MISTRAL_MODEL: str = "openrouter/mistralai/mistral-7b-instruct"
+    # OpenRouter model configurations - using free versions
+    OPENROUTER_DEEPSEEK_MODEL: str = "openrouter/deepseek/deepseek-chat:free"
+    OPENROUTER_LLAMA_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct:free"
+    OPENROUTER_QWEN_MODEL: str = "openrouter/qwen/qwen3-235b-a22b:free"
+    OPENROUTER_MISTRAL_MODEL: str = "openrouter/mistralai/mistral-7b-instruct:free"
     
     # Default model to use
-    DEFAULT_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct"
+    DEFAULT_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct:free"
     
     # Supabase configuration
     SUPABASE_URL: str

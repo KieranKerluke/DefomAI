@@ -36,12 +36,12 @@ async def main():
         print("Set it before running this test.")
         return
     
-    # Models to test
+    # Models to test - using free versions
     models = [
-        config.OPENROUTER_DEEPSEEK_MODEL,  # deepseek/deepseek-chat
-        config.OPENROUTER_LLAMA_MODEL,     # meta-llama/llama-3.1-8b-instruct
-        config.OPENROUTER_QWEN_MODEL,      # qwen/qwen3-235b-a22b
-        config.OPENROUTER_MISTRAL_MODEL    # mistralai/mistral-7b-instruct
+        config.OPENROUTER_DEEPSEEK_MODEL,  # deepseek/deepseek-chat:free
+        config.OPENROUTER_LLAMA_MODEL,     # meta-llama/llama-3.1-8b-instruct:free
+        config.OPENROUTER_QWEN_MODEL,      # qwen/qwen3-235b-a22b:free
+        config.OPENROUTER_MISTRAL_MODEL    # mistralai/mistral-7b-instruct:free
     ]
     
     results = {}
