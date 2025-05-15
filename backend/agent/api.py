@@ -32,32 +32,34 @@ instance_id = None # Global instance ID for this backend instance
 REDIS_RESPONSE_LIST_TTL = 3600 * 24
 
 MODEL_NAME_ALIASES = {
-    # Short names to full names
-    "sonnet-3.7": "anthropic/claude-3-7-sonnet-latest",
-    "gpt-4.1": "openai/gpt-4.1-2025-04-14",
-    "gpt-4o": "openai/gpt-4o",
-    "gpt-4-turbo": "openai/gpt-4-turbo",
-    "gpt-4": "openai/gpt-4",
-    "gemini-flash-2.5": "openrouter/google/gemini-2.5-flash-preview",
-    "grok-3": "xai/grok-3-fast-latest",
-    "deepseek": "openrouter/deepseek/deepseek-chat",
-    "grok-3-mini": "xai/grok-3-mini-fast-beta",
-    "qwen3": "openrouter/qwen/qwen3-235b-a22b", 
+    # Short names to model paths from config
+    "deepseek": config.OPENROUTER_DEEPSEEK_MODEL,
+    "llama": config.OPENROUTER_LLAMA_MODEL,
+    "qwen3": config.OPENROUTER_QWEN_MODEL,
+    "mistral": config.OPENROUTER_MISTRAL_MODEL,
+    
+    # Task-specific model aliases
+    "chat": config.MODEL_FOR_CHAT,                      # Mistral 7B for casual chat
+    "complex_dialogue": config.MODEL_FOR_COMPLEX_DIALOGUE,  # Qwen3 for complex conversations
+    "summarization": config.MODEL_FOR_SUMMARIZATION,    # LLaMA 3.1 for summarizing
+    "code": config.MODEL_FOR_CODE,                      # DeepSeek for code generation
+    "fix_code": config.MODEL_FOR_CODE_FIX,              # DeepSeek for fixing code
+    "math": config.MODEL_FOR_MATH,                      # DeepSeek for math reasoning
+    "multilingual": config.MODEL_FOR_MULTILINGUAL,      # Qwen3 for multilingual support
+    "tool_use": config.MODEL_FOR_TOOL_USE,              # Qwen3 for tool use/API calls
+    "fast": config.MODEL_FOR_FAST_RESPONSE,             # Mistral 7B for fast responses
+    "complex": config.MODEL_FOR_COMPLEX_TASKS,          # Qwen3 for complex tasks
 
-    # Also include full names as keys to ensure they map to themselves
-    "anthropic/claude-3-7-sonnet-latest": "anthropic/claude-3-7-sonnet-latest",
-    "openai/gpt-4.1-2025-04-14": "openai/gpt-4.1-2025-04-14",
-    "openai/gpt-4o": "openai/gpt-4o",
-    "openai/gpt-4-turbo": "openai/gpt-4-turbo",
-    "openai/gpt-4": "openai/gpt-4",
-    "openrouter/google/gemini-2.5-flash-preview": "openrouter/google/gemini-2.5-flash-preview",
-    "xai/grok-3-fast-latest": "xai/grok-3-fast-latest",
-    "deepseek/deepseek-chat": "openrouter/deepseek/deepseek-chat",
-    "xai/grok-3-mini-fast-beta": "xai/grok-3-mini-fast-beta",
+    # Also include full model paths as keys to ensure they map to themselves
+    config.OPENROUTER_DEEPSEEK_MODEL: config.OPENROUTER_DEEPSEEK_MODEL,
+    config.OPENROUTER_LLAMA_MODEL: config.OPENROUTER_LLAMA_MODEL,
+    config.OPENROUTER_QWEN_MODEL: config.OPENROUTER_QWEN_MODEL,
+    config.OPENROUTER_MISTRAL_MODEL: config.OPENROUTER_MISTRAL_MODEL,
 }
 
 class AgentStartRequest(BaseModel):
     model_name: Optional[str] = None  # Will be set from config.MODEL_TO_USE in the endpoint
+    task_type: Optional[str] = None  # Task type for model selection (chat, code, math, etc.)
     enable_thinking: Optional[bool] = False
     reasoning_effort: Optional[str] = 'low'
     stream: Optional[bool] = True
@@ -372,22 +374,27 @@ async def start_agent(
     if not instance_id:
         raise HTTPException(status_code=500, detail="Agent API not initialized with instance ID")
 
-    # Use model from config if not specified in the request
+    # Determine which model to use based on task_type or model_name
+    task_type = body.task_type
     model_name = body.model_name
-    logger.info(f"Original model_name from request: {model_name}")
+    logger.info(f"Request parameters: task_type={task_type}, model_name={model_name}")
+    
+    # Priority: 1. task_type (if provided), 2. model_name (if provided), 3. default model
+    if task_type is not None:
+        # If task type is provided, use the appropriate model for that task
+        model_name = MODEL_NAME_ALIASES.get(task_type, config.DEFAULT_MODEL)
+        logger.info(f"Using model for task type '{task_type}': {model_name}")
+    elif model_name is None:
+        # If neither task_type nor model_name provided, use default
+        model_name = config.DEFAULT_MODEL
+        logger.info(f"Using default model: {model_name}")
+    else:
+        # If model_name is provided but not task_type, resolve any aliases
+        resolved_model = MODEL_NAME_ALIASES.get(model_name, model_name)
+        model_name = resolved_model
+        logger.info(f"Using specified model: {model_name}")
 
-    if model_name is None:
-        model_name = config.MODEL_TO_USE
-        logger.info(f"Using model from config: {model_name}")
-
-    # Log the model name after alias resolution
-    resolved_model = MODEL_NAME_ALIASES.get(model_name, model_name)
-    logger.info(f"Resolved model name: {resolved_model}")
-
-    # Update model_name to use the resolved version
-    model_name = resolved_model
-
-    logger.info(f"Starting new agent for thread: {thread_id} with config: model={model_name}, thinking={body.enable_thinking}, effort={body.reasoning_effort}, stream={body.stream}, context_manager={body.enable_context_manager} (Instance: {instance_id})")
+    logger.info(f"Starting new agent for thread: {thread_id} with config: task_type={task_type}, model={model_name}, thinking={body.enable_thinking}, effort={body.reasoning_effort}, stream={body.stream}, context_manager={body.enable_context_manager} (Instance: {instance_id})")
     client = await db.client
 
     await verify_thread_access(client, thread_id, user_id)
@@ -432,7 +439,8 @@ async def start_agent(
         run_agent_background(
             agent_run_id=agent_run_id, thread_id=thread_id, instance_id=instance_id,
             project_id=project_id, sandbox=sandbox,
-            model_name=model_name,  # Already resolved above
+            model_name=model_name,  # Resolved based on task_type or direct specification
+            task_type=task_type,    # Pass task_type for proper model selection
             enable_thinking=body.enable_thinking, reasoning_effort=body.reasoning_effort,
             stream=body.stream, enable_context_manager=body.enable_context_manager
         )
@@ -766,14 +774,15 @@ async def run_agent_background(
     project_id: str,
     sandbox,
     model_name: str,
-    enable_thinking: Optional[bool],
-    reasoning_effort: Optional[str],
-    stream: bool,
-    enable_context_manager: bool
+    task_type: Optional[str] = None,
+    enable_thinking: Optional[bool] = False,
+    reasoning_effort: Optional[str] = 'low',
+    stream: bool = True,
+    enable_context_manager: bool = False
 ):
     """Run the agent in the background using Redis for state."""
     logger.info(f"Starting background agent run: {agent_run_id} for thread: {thread_id} (Instance: {instance_id})")
-    logger.info(f"🚀 Using model: {model_name} (thinking: {enable_thinking}, reasoning_effort: {reasoning_effort})")
+    logger.info(f"🚀 Using model: {model_name} for task_type: {task_type} (thinking: {enable_thinking}, reasoning_effort: {reasoning_effort})")
 
     client = await db.client
     start_time = datetime.now(timezone.utc)
@@ -827,6 +836,7 @@ async def run_agent_background(
         agent_gen = run_agent(
             thread_id=thread_id, project_id=project_id, stream=stream,
             thread_manager=thread_manager, model_name=model_name,
+            task_type=task_type, # Pass task_type for proper model selection
             enable_thinking=enable_thinking, reasoning_effort=reasoning_effort,
             enable_context_manager=enable_context_manager
         )

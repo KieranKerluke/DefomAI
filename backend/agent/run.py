@@ -33,13 +33,14 @@ async def run_agent(
     thread_manager: Optional[ThreadManager] = None,
     native_max_auto_continues: int = 25,
     max_iterations: int = 150,
-    model_name: str = "anthropic/claude-3-7-sonnet-latest",
+    model_name: str = config.DEFAULT_MODEL,
+    task_type: Optional[str] = None,
     enable_thinking: Optional[bool] = False,
     reasoning_effort: Optional[str] = 'low',
     enable_context_manager: bool = True
 ):
     """Run the development agent with specified configuration."""
-    print(f"🚀 Starting agent with model: {model_name}")
+    print(f"🚀 Starting agent with model: {model_name} for task type: {task_type}")
 
     thread_manager = ThreadManager()
 
@@ -75,8 +76,9 @@ async def run_agent(
         thread_manager.add_tool(DataProvidersTool)
 
 
-    # Only include sample response if the model name does not contain "anthropic"
-    if "anthropic" not in model_name.lower():
+    # Include sample response for OpenRouter models
+    # Qwen and LLaMA models benefit from sample responses, while Mistral and DeepSeek can work without
+    if "qwen" in model_name.lower() or "llama" in model_name.lower():
         sample_response_path = os.path.join(os.path.dirname(__file__), 'sample_responses/1.txt')
         with open(sample_response_path, 'r') as file:
             sample_response = file.read()
