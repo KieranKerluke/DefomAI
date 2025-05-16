@@ -242,6 +242,19 @@ def rule_based_task_detection(prompt: str) -> str:
         "generate content", "content creation", "copywriting"
     ]
     
+    # Market research patterns
+    market_research_patterns = [
+        "market research", "market analysis", "industry analysis", "competitive analysis",
+        "market size", "market share", "market trends", "market growth",
+        "competitor analysis", "swot analysis", "pestle analysis", "porter's five forces",
+        "analyze the market", "research the industry", "market report", "industry report",
+        "market overview", "industry overview", "market landscape", "industry landscape",
+        "market players", "key players", "major companies", "competitors",
+        "market opportunities", "market challenges", "market threats", "market drivers",
+        "market forecast", "market projection", "market outlook", "industry outlook",
+        "generate report", "create report", "pdf report", "market pdf"
+    ]
+    
     # Check for code fixing first (more specific than code)
     for pattern in code_fix_patterns:
         if pattern in prompt_lower:
@@ -291,6 +304,11 @@ def rule_based_task_detection(prompt: str) -> str:
     for pattern in creative_patterns:
         if pattern in prompt_lower:
             return "creative"
+            
+    # Check for market research
+    for pattern in market_research_patterns:
+        if pattern in prompt_lower:
+            return "market_research"
     
     # No clear match found
     return None

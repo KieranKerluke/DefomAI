@@ -152,6 +152,11 @@ def get_model_for_task(task_type: str) -> str:
         logger.info(f"Using creative writing model: {config.MODEL_FOR_SUMMARIZATION}")
         return config.MODEL_FOR_SUMMARIZATION
         
+    # Market research tasks - Use Qwen3 for complex research and tool use
+    elif task_type in ['market_research', 'market_analysis', 'industry_analysis']:
+        logger.info(f"Using market research model (complex + tool use): {config.MODEL_FOR_COMPLEX_TASKS}")
+        return config.MODEL_FOR_COMPLEX_TASKS
+        
     # Default fallback
     else:
         logger.info(f"No specific model for task type '{task_type}', using default: {config.DEFAULT_MODEL}")
