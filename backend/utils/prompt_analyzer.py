@@ -34,6 +34,7 @@ TASK_CATEGORIES = {
 async def analyze_prompt_and_select_model(prompt: str) -> str:
     """
     Use a fast model to analyze the prompt and determine the best model to use.
+    Also applies rule-based pattern matching for precise model selection.
     
     Args:
         prompt: The user's input prompt
@@ -41,6 +42,15 @@ async def analyze_prompt_and_select_model(prompt: str) -> str:
     Returns:
         The appropriate model name for this prompt
     """
+    # First, try rule-based pattern matching for precise detection
+    task_type = rule_based_task_detection(prompt)
+    if task_type:
+        logger.info(f"Rule-based detection classified prompt as '{task_type}'")
+        return get_model_for_task(task_type)
+    
+    # If rule-based detection didn't work, use the LLM for classification
+    logger.info("Using LLM for prompt classification")
+    
     # Use the fast model (Mistral 7B) for analysis
     analysis_model = config.MODEL_FOR_FAST_RESPONSE
     
@@ -68,6 +78,8 @@ Consider these guidelines:
 Specific pattern matching:
 - If the prompt contains phrases like "weather", "temperature", "forecast", "sunny", "rainy", "cloudy", or city names followed by "weather", classify as 'weather'
 - If the prompt asks about code debugging or fixing errors, classify as 'fix_code' not 'code'
+- If the prompt contains phrases like "write a function", "code", "program", "algorithm", "implement", or mentions programming languages like "Python", "JavaScript", "Java", "C++", classify as 'code'
+- If the prompt asks to create, write, or implement any kind of function, algorithm, or program, classify as 'code'
 
 Respond with ONLY the category name and nothing else. No explanations or additional text."""
     }
@@ -134,25 +146,182 @@ async def get_last_user_message(client, thread_id: str) -> Optional[str]:
         logger.error(f"Error retrieving last user message: {str(e)}")
         return None
 
-# For testing purposes
-async def test_prompt_analyzer():
-    """Test the prompt analyzer with various types of prompts."""
-    test_prompts = [
-        "What's the weather like today?",
-        "Write a Python function to calculate Fibonacci numbers",
-        "Solve this equation: 3x^2 + 2x - 5 = 0",
-        "Translate this text to French: 'Hello, how are you?'",
-        "Create a function that calls the OpenAI API to generate images",
-        "Research the impact of quantum computing on cryptography"
+def rule_based_task_detection(prompt: str) -> str:
+    """
+    Apply rule-based pattern matching to precisely detect the task type.
+    
+    Args:
+        prompt: The user's input prompt
+        
+    Returns:
+        The detected task type or None if no clear match
+    """
+    prompt_lower = prompt.lower()
+    
+    # Code detection patterns
+    code_patterns = [
+        "write a function", "create a function", "implement a function",
+        "write a program", "create a program", "implement a program",
+        "write an algorithm", "create an algorithm", "implement an algorithm",
+        "write code", "generate code", "code example",
+        "in python", "in javascript", "in java", "in c++", "in typescript",
+        "function that", "class that", "algorithm for", "code for",
+        "programming", "software development", "coding"
     ]
     
-    print("\n=== PROMPT ANALYZER TEST ===")
-    for prompt in test_prompts:
-        model = await analyze_prompt_and_select_model(prompt)
-        print(f"\nPrompt: {prompt[:50]}...")
-        print(f"Selected model: {model}")
+    # Code fixing patterns
+    code_fix_patterns = [
+        "debug", "fix", "error", "not working", "doesn't work", "isn't working",
+        "bug", "issue", "problem with", "fix the code", "improve the code",
+        "optimize", "refactor", "clean up", "improve performance",
+        "code review", "review this code"
+    ]
     
-    print("\n=== TEST COMPLETE ===")
+    # Math patterns
+    math_patterns = [
+        "solve", "equation", "calculate", "computation", "formula",
+        "math", "mathematics", "arithmetic", "algebra", "calculus",
+        "trigonometry", "geometry", "statistics", "probability",
+        "x =", "y =", "find the value", "compute", "evaluate",
+        "factorial", "logarithm", "exponent", "square root", "derivative",
+        "integral", "summation", "product", "series", "function"
+    ]
+    
+    # Weather patterns
+    weather_patterns = [
+        "weather", "temperature", "forecast", "humidity", "precipitation",
+        "sunny", "rainy", "cloudy", "snowy", "windy", "storm", "climate",
+        "meteorological", "atmospheric", "weather in", "weather for",
+        "weather forecast", "weather report", "weather update",
+        "how hot", "how cold", "will it rain", "will it snow"
+    ]
+    
+    # Summarization patterns
+    summarization_patterns = [
+        "summarize", "summary", "summarization", "condense", "shorten",
+        "tldr", "brief overview", "key points", "main ideas", "gist",
+        "synopsis", "abstract", "executive summary", "recap", "outline"
+    ]
+    
+    # Multilingual patterns
+    multilingual_patterns = [
+        "translate", "translation", "in spanish", "in french", "in german",
+        "in chinese", "in japanese", "in russian", "in arabic", "in hindi",
+        "from english to", "from spanish to", "language", "linguistic",
+        "grammar", "vocabulary", "phrase", "idiom", "expression"
+    ]
+    
+    # Tool use patterns
+    tool_use_patterns = [
+        "api", "function call", "tool", "integration", "connect to",
+        "fetch data", "retrieve data", "get data from", "use the api",
+        "database", "query", "request", "endpoint", "service",
+        "webhook", "automation", "workflow", "pipeline"
+    ]
+    
+    # Complex dialogue patterns
+    complex_dialogue_patterns = [
+        "conversation", "dialogue", "discussion", "debate", "argument",
+        "negotiation", "interview", "consultation", "counseling", "therapy",
+        "roleplay", "scenario", "situation", "case study", "hypothetical"
+    ]
+    
+    # Data analysis patterns
+    data_analysis_patterns = [
+        "analyze data", "data analysis", "visualization", "chart", "graph",
+        "plot", "dashboard", "metrics", "kpi", "analytics", "insights",
+        "trends", "patterns", "correlations", "regression", "clustering",
+        "classification", "prediction", "forecast", "projection"
+    ]
+    
+    # Creative patterns
+    creative_patterns = [
+        "story", "poem", "essay", "article", "blog post", "content",
+        "creative", "imaginative", "fiction", "narrative", "tale",
+        "write a story", "write a poem", "write an essay", "write an article",
+        "generate content", "content creation", "copywriting"
+    ]
+    
+    # Check for code fixing first (more specific than code)
+    for pattern in code_fix_patterns:
+        if pattern in prompt_lower:
+            return "fix_code"
+    
+    # Check for code
+    for pattern in code_patterns:
+        if pattern in prompt_lower:
+            return "code"
+    
+    # Check for math
+    for pattern in math_patterns:
+        if pattern in prompt_lower:
+            return "math"
+    
+    # Check for weather
+    for pattern in weather_patterns:
+        if pattern in prompt_lower:
+            return "weather"
+    
+    # Check for summarization
+    for pattern in summarization_patterns:
+        if pattern in prompt_lower:
+            return "summarization"
+    
+    # Check for multilingual
+    for pattern in multilingual_patterns:
+        if pattern in prompt_lower:
+            return "multilingual"
+    
+    # Check for tool use
+    for pattern in tool_use_patterns:
+        if pattern in prompt_lower:
+            return "tool_use"
+    
+    # Check for complex dialogue
+    for pattern in complex_dialogue_patterns:
+        if pattern in prompt_lower:
+            return "complex_dialogue"
+    
+    # Check for data analysis
+    for pattern in data_analysis_patterns:
+        if pattern in prompt_lower:
+            return "data_analysis"
+    
+    # Check for creative
+    for pattern in creative_patterns:
+        if pattern in prompt_lower:
+            return "creative"
+    
+    # No clear match found
+    return None
+
+async def test_prompt_analyzer():
+    """Test function for the prompt analyzer."""
+    test_prompts = [
+        "What's the weather like today?",
+        "Write a Python function to calculate the factorial of a number.",
+        "Solve this equation: 3x^2 + 5x - 2 = 0",
+        "Translate this sentence to French: 'Hello, how are you?'",
+        "Can you help me analyze this sales data and create a visualization?",
+        "What are the latest developments in quantum computing?",
+        "Summarize this article for me.",
+        "Can you help me debug this code?",
+        "Use the API to fetch the latest stock prices.",
+        "Tell me a joke."
+    ]
+    
+    print("\n=== PROMPT ANALYZER TEST ===\n")
+    for prompt in test_prompts:
+        # Test rule-based detection first
+        rule_based_result = rule_based_task_detection(prompt)
+        print(f"Prompt: {prompt}")
+        print(f"Rule-based detection: {rule_based_result}")
+        
+        # Test full model selection
+        model = await analyze_prompt_and_select_model(prompt)
+        print(f"Selected model: {model}\n")
+    
+    print("=== TEST COMPLETE ===")
 
 if __name__ == "__main__":
     asyncio.run(test_prompt_analyzer())

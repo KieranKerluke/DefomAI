@@ -57,6 +57,12 @@ async def run_agent(
         if any(weather_term in task_type_lower for weather_term in ['weather', 'forecast', 'temperature']):
             logger.info(f"Weather question detected, using tool-optimized model")
             task_model = MODEL_NAME_ALIASES.get('weather')
+            
+        # Add special handling for code-related prompts
+        code_indicators = ['write a function', 'code', 'program', 'algorithm', 'implement', 'python', 'javascript', 'java', 'c++', 'function']
+        if task_type_lower == 'chat' and any(code_term in thread_manager.get_last_user_message().lower() for code_term in code_indicators):
+            logger.info(f"Code-related question detected in chat prompt, overriding to use code model")
+            task_model = MODEL_NAME_ALIASES.get('code')
         
         if task_model:
             model_name = task_model

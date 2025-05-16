@@ -85,29 +85,76 @@ def get_model_for_task(task_type: str) -> str:
         The full model path for the appropriate model for this task
     """
     task_type = task_type.lower()
+    logger.info(f"Selecting model for task type: {task_type}")
     
+    # Basic conversation
     if task_type in ['chat', 'conversation', 'qa', 'question']:
+        logger.info(f"Using chat model: {config.MODEL_FOR_CHAT}")
         return config.MODEL_FOR_CHAT
+        
+    # Complex dialogue
     elif task_type in ['complex_dialogue', 'deep_conversation', 'multi_turn']:
+        logger.info(f"Using complex dialogue model: {config.MODEL_FOR_COMPLEX_DIALOGUE}")
         return config.MODEL_FOR_COMPLEX_DIALOGUE
+        
+    # Summarization
     elif task_type in ['summarize', 'summarization', 'summary']:
+        logger.info(f"Using summarization model: {config.MODEL_FOR_SUMMARIZATION}")
         return config.MODEL_FOR_SUMMARIZATION
+        
+    # Code generation
     elif task_type in ['code', 'coding', 'programming', 'generate_code']:
+        logger.info(f"Using code model: {config.MODEL_FOR_CODE}")
         return config.MODEL_FOR_CODE
+        
+    # Code fixing
     elif task_type in ['fix_code', 'debug', 'refactor']:
+        logger.info(f"Using code fix model: {config.MODEL_FOR_CODE_FIX}")
         return config.MODEL_FOR_CODE_FIX
+        
+    # Math reasoning
     elif task_type in ['math', 'logic', 'reasoning', 'calculation']:
+        logger.info(f"Using math model: {config.MODEL_FOR_MATH}")
         return config.MODEL_FOR_MATH
+        
+    # Multilingual
     elif task_type in ['multilingual', 'translation', 'language']:
+        logger.info(f"Using multilingual model: {config.MODEL_FOR_MULTILINGUAL}")
         return config.MODEL_FOR_MULTILINGUAL
+        
+    # Tool use
     elif task_type in ['tool_use', 'api', 'function_call', 'agent']:
+        logger.info(f"Using tool use model: {config.MODEL_FOR_TOOL_USE}")
         return config.MODEL_FOR_TOOL_USE
+        
+    # Fast responses
     elif task_type in ['fast', 'quick', 'lightweight']:
+        logger.info(f"Using fast response model: {config.MODEL_FOR_FAST_RESPONSE}")
         return config.MODEL_FOR_FAST_RESPONSE
+        
+    # Complex tasks
     elif task_type in ['complex', 'research', 'detailed', 'legal']:
+        logger.info(f"Using complex tasks model: {config.MODEL_FOR_COMPLEX_TASKS}")
         return config.MODEL_FOR_COMPLEX_TASKS
+        
+    # Weather questions - Use tool-optimized model
+    elif task_type in ['weather', 'forecast', 'temperature']:
+        logger.info(f"Using weather model (tool-optimized): {config.MODEL_FOR_TOOL_USE}")
+        return config.MODEL_FOR_TOOL_USE
+        
+    # Data analysis - Use math-optimized model
+    elif task_type in ['data_analysis', 'data', 'statistics', 'visualization']:
+        logger.info(f"Using data analysis model: {config.MODEL_FOR_MATH}")
+        return config.MODEL_FOR_MATH
+        
+    # Creative tasks - Use summarization model (good at text generation)
+    elif task_type in ['creative', 'writing', 'story', 'content']:
+        logger.info(f"Using creative writing model: {config.MODEL_FOR_SUMMARIZATION}")
+        return config.MODEL_FOR_SUMMARIZATION
+        
+    # Default fallback
     else:
-        # Default to the general-purpose model
+        logger.info(f"No specific model for task type '{task_type}', using default: {config.DEFAULT_MODEL}")
         return config.DEFAULT_MODEL
 
 def get_openrouter_model(model_name: str) -> str:
