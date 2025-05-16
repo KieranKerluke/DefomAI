@@ -25,7 +25,10 @@ TASK_CATEGORIES = {
     "math": "Mathematical calculations, equations, logic problems, or reasoning",
     "multilingual": "Non-English content, translation tasks, or language analysis",
     "tool_use": "Tasks requiring tools, APIs, function calls, or structured outputs",
-    "complex": "Research, detailed analysis, legal tasks, or specialized knowledge"
+    "complex": "Research, detailed analysis, legal tasks, or specialized knowledge",
+    "weather": "Weather forecasts, current conditions, or climate information",
+    "data_analysis": "Analyzing, visualizing, or interpreting data and statistics",
+    "creative": "Creative writing, storytelling, or content generation"
 }
 
 async def analyze_prompt_and_select_model(prompt: str) -> str:
@@ -58,6 +61,13 @@ Consider these guidelines:
 - For non-English content or translation, use 'multilingual'
 - For tasks requiring structured outputs or API calls, use 'tool_use'
 - For complex research or detailed analysis, use 'complex'
+- For weather forecasts or current conditions, use 'weather'
+- For data analysis or visualization tasks, use 'data_analysis'
+- For creative writing or content generation, use 'creative'
+
+Specific pattern matching:
+- If the prompt contains phrases like "weather", "temperature", "forecast", "sunny", "rainy", "cloudy", or city names followed by "weather", classify as 'weather'
+- If the prompt asks about code debugging or fixing errors, classify as 'fix_code' not 'code'
 
 Respond with ONLY the category name and nothing else. No explanations or additional text."""
     }

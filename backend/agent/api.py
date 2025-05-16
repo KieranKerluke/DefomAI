@@ -93,6 +93,23 @@ MODEL_NAME_ALIASES = {
     "research": config.MODEL_FOR_COMPLEX_TASKS,
     "detailed": config.MODEL_FOR_COMPLEX_TASKS,
     "legal": config.MODEL_FOR_COMPLEX_TASKS,
+    
+    # Weather questions - Use Qwen3 for better tool use
+    "weather": config.MODEL_FOR_TOOL_USE,
+    "forecast": config.MODEL_FOR_TOOL_USE,
+    "temperature": config.MODEL_FOR_TOOL_USE,
+    
+    # Data analysis - DeepSeek for precision
+    "data_analysis": config.MODEL_FOR_MATH,
+    "data": config.MODEL_FOR_MATH,
+    "statistics": config.MODEL_FOR_MATH,
+    "visualization": config.MODEL_FOR_MATH,
+    
+    # Creative tasks - LLaMA 3.1
+    "creative": config.MODEL_FOR_SUMMARIZATION,
+    "writing": config.MODEL_FOR_SUMMARIZATION,
+    "story": config.MODEL_FOR_SUMMARIZATION,
+    "content": config.MODEL_FOR_SUMMARIZATION,
 
     # Also include full model paths as keys to ensure they map to themselves
     config.OPENROUTER_DEEPSEEK_MODEL: config.OPENROUTER_DEEPSEEK_MODEL,

@@ -50,6 +50,14 @@ async def run_agent(
         task_type_lower = task_type.lower()
         task_model = MODEL_NAME_ALIASES.get(task_type_lower)
         
+        # Log the task type for debugging
+        logger.info(f"Task type detected: {task_type_lower}")
+        
+        # Add special handling for weather questions to ensure they use the right model
+        if any(weather_term in task_type_lower for weather_term in ['weather', 'forecast', 'temperature']):
+            logger.info(f"Weather question detected, using tool-optimized model")
+            task_model = MODEL_NAME_ALIASES.get('weather')
+        
         if task_model:
             model_name = task_model
             print(f"🚀 Using task-specific model for '{task_type_lower}': {model_name}")
