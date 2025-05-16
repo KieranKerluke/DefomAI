@@ -116,9 +116,9 @@ async def run_agent(
         with open(sample_response_path, 'r') as file:
             sample_response = file.read()
         
-        system_message = { "role": "system", "content": get_system_prompt() + "\n\n <sample_assistant_response>" + sample_response + "</sample_assistant_response>" }
+        system_message = { "role": "system", "content": get_system_prompt() + "\n\n IMPORTANT: When responding to user questions, always answer the question directly first. Do not introduce yourself or list your capabilities unless specifically asked.\n\n <sample_assistant_response>" + sample_response + "</sample_assistant_response>" }
     else:
-        system_message = { "role": "system", "content": get_system_prompt() }
+        system_message = { "role": "system", "content": get_system_prompt() + "\n\n IMPORTANT: When responding to user questions, always answer the question directly first. Do not introduce yourself or list your capabilities unless specifically asked." }
 
     iteration_count = 0
     continue_execution = True
