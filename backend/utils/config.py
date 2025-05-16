@@ -121,18 +121,18 @@ class Configuration:
     OPENROUTER_MISTRAL_MODEL: str = "openrouter/mistralai/mistral-7b-instruct:free"
     
     # Default model to use
-    DEFAULT_MODEL: str = "openrouter/meta-llama/llama-3.1-8b-instruct:free"
+    DEFAULT_MODEL: str = "openrouter/qwen/qwen3-235b-a22b:free"
     
-    # Task-specific model assignments
-    MODEL_FOR_CHAT: str = "openrouter/mistralai/mistral-7b-instruct:free"           # Casual chat/Q&A
+    # Task-specific model assignments - all using Qwen model
+    MODEL_FOR_CHAT: str = "openrouter/qwen/qwen3-235b-a22b:free"           # Casual chat/Q&A
     MODEL_FOR_COMPLEX_DIALOGUE: str = "openrouter/qwen/qwen3-235b-a22b:free"       # Complex multi-turn conversation
-    MODEL_FOR_SUMMARIZATION: str = "openrouter/meta-llama/llama-3.1-8b-instruct:free" # Summarizing texts
-    MODEL_FOR_CODE: str = "openrouter/deepseek/deepseek-chat-v3-0324:free"    # Code generation
-    MODEL_FOR_CODE_FIX: str = "openrouter/deepseek/deepseek-chat-v3-0324:free" # Fixing/improving code
-    MODEL_FOR_MATH: str = "openrouter/deepseek/deepseek-chat-v3-0324:free"    # Math reasoning, logic
+    MODEL_FOR_SUMMARIZATION: str = "openrouter/qwen/qwen3-235b-a22b:free" # Summarizing texts
+    MODEL_FOR_CODE: str = "openrouter/qwen/qwen3-235b-a22b:free"    # Code generation
+    MODEL_FOR_CODE_FIX: str = "openrouter/qwen/qwen3-235b-a22b:free" # Fixing/improving code
+    MODEL_FOR_MATH: str = "openrouter/qwen/qwen3-235b-a22b:free"    # Math reasoning, logic
     MODEL_FOR_MULTILINGUAL: str = "openrouter/qwen/qwen3-235b-a22b:free"           # Multilingual support
     MODEL_FOR_TOOL_USE: str = "openrouter/qwen/qwen3-235b-a22b:free"               # Tool use, API calls
-    MODEL_FOR_FAST_RESPONSE: str = "openrouter/mistralai/mistral-7b-instruct:free" # Low-resource fallback
+    MODEL_FOR_FAST_RESPONSE: str = "openrouter/qwen/qwen3-235b-a22b:free" # Low-resource fallback
     MODEL_FOR_COMPLEX_TASKS: str = "openrouter/qwen/qwen3-235b-a22b:free"          # Highly complex instructions
     
     # Supabase configuration
