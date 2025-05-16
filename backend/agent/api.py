@@ -418,33 +418,57 @@ async def start_agent(
     if not instance_id:
         raise HTTPException(status_code=500, detail="Agent API not initialized with instance ID")
 
-    # Determine which model to use based on task_type or model_name
+    # Get database client for thread access verification and message retrieval
+    client = await db.client
+    await verify_thread_access(client, thread_id, user_id)
+    
+    # Determine which model to use based on task_type, model_name, or auto-analysis
     task_type = body.task_type
     model_name = body.model_name
     logger.info(f"Request parameters: task_type={task_type}, model_name={model_name}")
     
-    # If no task_type specified but model_name is DeepSeek, set task_type to 'code'
-    # This ensures we don't always default to DeepSeek for all tasks
-    if task_type is None and (model_name == "deepseek" or 
-                             model_name == config.OPENROUTER_DEEPSEEK_MODEL or
-                             "deepseek" in str(model_name).lower()):
-        task_type = "code"
-        logger.info(f"DeepSeek model detected, setting task_type to 'code'")
+    # If neither task_type nor model_name is provided, use prompt analysis
+    if task_type is None and model_name is None:
+        try:
+            # Import the prompt analyzer
+            from utils.prompt_analyzer import analyze_prompt_and_select_model, get_last_user_message
+            
+            # Get the last user message from the thread
+            last_message = await get_last_user_message(client, thread_id)
+            
+            if last_message:
+                logger.info(f"Analyzing last user message to determine appropriate model")
+                # Analyze the prompt to determine the best model
+                model_name = await analyze_prompt_and_select_model(last_message)
+                logger.info(f"Auto-selected model {model_name} based on prompt analysis")
+            else:
+                logger.warning("No user message found for analysis, using default model")
+                model_name = config.DEFAULT_MODEL
+        except Exception as e:
+            logger.error(f"Error in prompt analysis: {str(e)}")
+            logger.info("Falling back to default model selection")
+            model_name = config.DEFAULT_MODEL
     
-    # If no task_type is provided, try to determine it from the last message
-    if task_type is None:
-        # Set a default task type based on common use case
-        task_type = "chat"  # Default to casual chat if we can't determine
-        logger.info(f"No task_type provided, defaulting to '{task_type}'")
-    
-    # Ensure task_type is lowercase for consistent matching
-    if task_type is not None:
-        task_type = task_type.lower()
-        logger.info(f"Normalized task_type to lowercase: '{task_type}'")
-    
-    # Priority: 1. task_type (if provided), 2. model_name (if provided), 3. default model
-    if task_type is not None:
-        # If task type is provided, use the appropriate model for that task
+    # If model_name is still None, use task_type-based selection
+    if model_name is None:
+        # If no task_type specified but model_name is DeepSeek, set task_type to 'code'
+        if task_type is None and (model_name == "deepseek" or 
+                                model_name == config.OPENROUTER_DEEPSEEK_MODEL or
+                                "deepseek" in str(model_name).lower()):
+            task_type = "code"
+            logger.info(f"DeepSeek model detected, setting task_type to 'code'")
+        
+        # If no task_type is provided, set a default
+        if task_type is None:
+            task_type = "chat"  # Default to casual chat if we can't determine
+            logger.info(f"No task_type provided, defaulting to '{task_type}'")
+        
+        # Ensure task_type is lowercase for consistent matching
+        if task_type is not None:
+            task_type = task_type.lower()
+            logger.info(f"Normalized task_type to lowercase: '{task_type}'")
+        
+        # Get model based on task type
         model_name = MODEL_NAME_ALIASES.get(task_type)
         
         # If exact match not found, try to find a suitable category
@@ -464,12 +488,8 @@ async def start_agent(
                 logger.info(f"Using default chat model for unrecognized task type '{task_type}': {model_name}")
         else:
             logger.info(f"Using model for task type '{task_type}': {model_name}")
-    elif model_name is None:
-        # If neither task_type nor model_name provided, use default chat model
-        model_name = config.MODEL_FOR_CHAT
-        logger.info(f"No task_type or model_name provided, using chat model: {model_name}")
     else:
-        # If model_name is provided but not task_type, resolve any aliases
+        # If model_name is provided, resolve any aliases
         resolved_model = MODEL_NAME_ALIASES.get(model_name, model_name)
         model_name = resolved_model
         logger.info(f"Using specified model: {model_name}")
