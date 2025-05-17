@@ -97,12 +97,12 @@ export const useModelSelection = () => {
         }
       }
 
-      // Align with the proposed API format in the plan
+      // Align with the backend API format
       const response = await apiClient.post<ModelSuggestionResponse>('/api/model/suggest', {
         prompt,
-        userSelectedModel: isAutomatic ? null : (isLocked ? selectedModel : preferredModel),
-        isLocked: isAutomatic ? false : isLocked,
-        suggestedModelForTask // Pass our suggestion to the backend
+        user_preference: isAutomatic ? null : (isLocked ? selectedModel : preferredModel),
+        lock_preference: isAutomatic ? false : isLocked,
+        conversation_history: [] // Pass empty conversation history for now
       });
       
       // Update model options with performance data

@@ -8,7 +8,9 @@ import React, {
   useState,
 } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useModelSelection } from '@/components/thread/chat-input/_use-model-selection';
+import { AUTOMATIC_MODEL } from '@/types/model';
 import { Button } from '@/components/ui/button';
 import {
   ArrowDown,
@@ -732,6 +734,12 @@ export default function ThreadPage({
       message: string,
       options?: { model_name?: string; enable_thinking?: boolean },
     ) => {
+      // Get the selected model from the model selection hook
+      const { selectedModel, useUserSelection } = useModelSelection();
+      // Add the selected model to the options if not automatic and user selection should be used
+      if (selectedModel !== AUTOMATIC_MODEL && useUserSelection && (!options || !options.model_name)) {
+        options = { ...options, model_name: selectedModel };
+      }
       if (!message.trim()) return;
       setIsSending(true);
 
