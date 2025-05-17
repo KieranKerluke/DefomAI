@@ -14,6 +14,7 @@ import os
 from agentpress.thread_manager import ThreadManager
 from services.supabase import DBConnection
 from services import redis
+import redis as redis_py  # Import the actual redis package for exceptions
 from agent.run import run_agent
 from utils.auth_utils import get_current_user_id_from_jwt, get_user_id_from_stream_auth, verify_thread_access
 from utils.logger import logger
@@ -688,7 +689,7 @@ async def stream_agent_run(
                             # This is expected when Redis connection closes
                             # Return a special value to indicate we need to reconnect
                             return {"__reconnect__": True, "channel": channel_name}
-                        except redis.ConnectionError as e:
+                        except redis_py.ConnectionError as e:
                             logger.warning(f"{channel_name} listener connection error: {e}")
                             return {"__reconnect__": True, "channel": channel_name}
                         except Exception as e:

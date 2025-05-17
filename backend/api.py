@@ -162,9 +162,6 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-# Include API routers
-app.include_router(model_api.router, prefix="/api")
-
 # Original configuration (commented out for now)
 """
 allowed_origins = [
