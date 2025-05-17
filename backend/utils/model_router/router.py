@@ -64,8 +64,8 @@ class ModelRouter:
         # Patterns for task detection
         self.task_patterns = {
             TaskType.CODE: [
-                r"def\s+\w+\s*\\(", 
-                r"function\s+\w+\s*\\(", 
+                r"def\s+\w+\s*\(", 
+                r"function\s+\w+\s*\(", 
                 r"class\s+\w+",
                 r"import\s+\w+", 
                 r"from\s+\w+\s+import", 
