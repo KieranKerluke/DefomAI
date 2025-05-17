@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 import { useLocalStorage } from 'usehooks-ts';
-import { ModelSuggestionResponse, ModelOption, DEFAULT_MODEL, MODEL_OPTIONS } from '@/types/model';
+import { ModelSuggestionResponse, ModelOption, DEFAULT_MODEL, MODEL_OPTIONS, AUTOMATIC_MODEL } from '@/types/model';
 
 // Mock API client
 const apiClient = {
@@ -80,6 +80,8 @@ export const useModelSelection = () => {
 
   // Get model suggestion from the backend following the hybrid approach
   const getModelSuggestion = useCallback(async (prompt: string) => {
+    // If the selected model is set to automatic, we'll always use the suggestion
+    const isAutomatic = selectedModel === AUTOMATIC_MODEL;
     try {
       // Check if this is an image-related task
       const isImageTask = detectImageContent(prompt);
@@ -98,8 +100,8 @@ export const useModelSelection = () => {
       // Align with the proposed API format in the plan
       const response = await apiClient.post<ModelSuggestionResponse>('/api/model/suggest', {
         prompt,
-        userSelectedModel: isLocked ? selectedModel : preferredModel,
-        isLocked,
+        userSelectedModel: isAutomatic ? null : (isLocked ? selectedModel : preferredModel),
+        isLocked: isAutomatic ? false : isLocked,
         suggestedModelForTask // Pass our suggestion to the backend
       });
       
@@ -112,21 +114,21 @@ export const useModelSelection = () => {
       setAvailableModels(updatedModels);
       
       // For image tasks, prioritize DeepSeek if available and not locked
-      let modelToUse = isLocked ? selectedModel : response.data.suggested_model;
+      let modelToUse = isAutomatic ? response.data.suggested_model : (isLocked ? selectedModel : response.data.suggested_model);
       
-      // If this is an image task and we have a DeepSeek model, use it (unless locked)
-      if (isImageTask && !isLocked && suggestedModelForTask) {
+      // If this is an image task and we have a DeepSeek model, use it (unless locked and not automatic)
+      if (isImageTask && (isAutomatic || !isLocked) && suggestedModelForTask) {
         modelToUse = suggestedModelForTask;
       }
       
-      // If not locked and the suggested model is different, update the UI
-      if (!isLocked && modelToUse !== selectedModel) {
+      // If automatic or not locked and the suggested model is different, update the UI
+      if ((isAutomatic || !isLocked) && modelToUse !== selectedModel && selectedModel !== AUTOMATIC_MODEL) {
         setSelectedModel(modelToUse);
       }
       
       return {
         suggestedModel: modelToUse,
-        useUserSelection: isLocked,
+        useUserSelection: !isAutomatic && isLocked,
         taskType: isImageTask ? 'image_analysis' : response.data.task_type,
         confidence: response.data.confidence,
         models: updatedModels,
@@ -135,11 +137,11 @@ export const useModelSelection = () => {
       console.error('Error getting model suggestion:', error);
       return {
         suggestedModel: selectedModel,
-        useUserSelection: true,
+        useUserSelection: !isAutomatic,
         models: availableModels,
       };
     }
-  }, [availableModels, isLocked, preferredModel, selectedModel, canAccessModel]);
+  }, [availableModels, isLocked, preferredModel, selectedModel, canAccessModel, AUTOMATIC_MODEL]);
 
   // Update selected model when preferred model changes
   useEffect(() => {
@@ -200,6 +202,6 @@ export const useModelSelection = () => {
     isLoading,
     taskType: modelSuggestion?.taskType,
     confidence: modelSuggestion?.confidence,
-    useUserSelection: modelSuggestion?.useUserSelection || isLocked,
+    useUserSelection: selectedModel !== AUTOMATIC_MODEL && (modelSuggestion?.useUserSelection || isLocked),
   };
 };

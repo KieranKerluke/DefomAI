@@ -13,6 +13,7 @@ export interface ModelOption {
   requiresSubscription: boolean;
   capabilities?: string[];
   performance?: ModelPerformance;
+  isAutomatic?: boolean;
 }
 
 export interface ModelSuggestionResponse {
@@ -26,9 +27,17 @@ export interface ModelSuggestionResponse {
   use_user_selection?: boolean;
 }
 
+export const AUTOMATIC_MODEL = 'automatic';
 export const DEFAULT_MODEL = 'openrouter/mistralai/mistral-7b-instruct:free';
 
 export const MODEL_OPTIONS: ModelOption[] = [
+  {
+    id: AUTOMATIC_MODEL,
+    label: 'Automatic',
+    description: 'Automatically selects the best model for your request',
+    requiresSubscription: false,
+    capabilities: ['text', 'chat', 'code', 'image_analysis', 'reasoning']
+  },
   { 
     id: 'openrouter/mistralai/mistral-7b-instruct:free',
     label: 'Mistral 7B',

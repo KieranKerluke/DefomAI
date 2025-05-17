@@ -15,8 +15,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronDown, Lock, Unlock, Star, BarChart3, Image } from 'lucide-react';
-import { ModelOption } from '@/types/model';
+import { Check, ChevronDown, Lock, Unlock, Star, BarChart3, Image, Zap } from 'lucide-react';
+import { ModelOption, AUTOMATIC_MODEL } from '@/types/model';
 import { cn } from '@/lib/utils';
 
 interface ModelSelectorProps {
@@ -73,7 +73,9 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           >
             <div className="flex items-center gap-2 text-sm font-medium">
               <div className="flex items-center gap-1.5">
-                {selectedModelData?.performance?.rank === 1 && (
+                {selectedModel === AUTOMATIC_MODEL ? (
+                  <Zap className="h-3.5 w-3.5 text-blue-500" />
+                ) : selectedModelData?.performance?.rank === 1 && (
                   <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
                 )}
                 <span>{selectedModelData?.label || 'Select model'}</span>
@@ -123,6 +125,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             const accessible = canAccessModel(opt.id);
             const isSelected = selectedModel === opt.id;
             const isTopPerformer = opt.performance?.rank === 1;
+            const isAutomatic = opt.id === AUTOMATIC_MODEL;
             
             return (
               <TooltipProvider key={opt.id}>
@@ -142,7 +145,9 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                       <div className="flex flex-col w-full gap-1">
                         <div className="flex items-center justify-between w-full">
                           <div className="flex items-center gap-2">
-                            {isTopPerformer && (
+                            {isAutomatic ? (
+                              <Zap className="h-3.5 w-3.5 text-blue-500" />
+                            ) : isTopPerformer && (
                               <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
                             )}
                             {opt.capabilities?.includes('image_analysis') && (
@@ -227,9 +232,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           
           <div className="px-2 py-1.5">
             <p className="text-xs text-muted-foreground">
-              {isLocked 
-                ? 'Model selection is locked. The system will always use your selected model.'
-                : 'The system will automatically select the best model for each task.'}
+              {selectedModel === AUTOMATIC_MODEL
+                ? 'Automatic mode enabled. The system will select the best model for each task.'
+                : isLocked 
+                  ? 'Model selection is locked. The system will always use your selected model.'
+                  : 'The system will suggest models but respect your preference.'}
             </p>
             
             {taskType && !isLocked && (
