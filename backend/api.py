@@ -143,8 +143,13 @@ async def log_requests_middleware(request: Request, call_next):
 # The verification will be handled directly by the endpoints using the ai_access_required dependency
 
 # Define allowed origins based on environment
-# For now, allow all origins to troubleshoot CORS issues
-allowed_origins = ["*"]
+# Allowed origins for CORS
+allowed_origins = [
+    "http://localhost:3000",  # Frontend development server
+    "http://localhost:8000",  # Backend development server
+    "https://*.vercel.app",   # Vercel preview deployments
+    "https://*.suna.vercel.app"  # Production domain
+]
 
 # Original configuration (commented out for now)
 """
