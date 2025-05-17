@@ -7,6 +7,8 @@ from typing import Optional
 from supabase import create_async_client, AsyncClient
 from utils.logger import logger
 from utils.config import config
+# Global database connection instance
+_db_connection = None
 
 class DBConnection:
     """Singleton database connection manager using Supabase."""
@@ -152,3 +154,14 @@ class DBConnection:
         except Exception as e:
             logger.error(f"Database fetch_one error: {e}")
             raise
+def get_db_client():
+    """
+    Get a database client instance.
+    
+    Returns:
+        DBConnection: A database connection instance
+    """
+    global _db_connection
+    if _db_connection is None:
+        _db_connection = DBConnection()
+    return _db_connection
