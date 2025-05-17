@@ -30,8 +30,12 @@ interface MessageInputProps {
   selectedModel: string;
   onModelChange: (model: string) => void;
   modelOptions: any[];
-  subscriptionStatus: string;
   canAccessModel: (model: string) => boolean;
+  isLocked?: boolean;
+  onToggleLock?: () => void;
+  taskType?: string;
+  confidence?: number;
+  useUserSelection?: boolean;
 }
 
 export const MessageInput = forwardRef<HTMLTextAreaElement, MessageInputProps>(
@@ -59,8 +63,12 @@ export const MessageInput = forwardRef<HTMLTextAreaElement, MessageInputProps>(
       selectedModel,
       onModelChange,
       modelOptions,
-      subscriptionStatus,
       canAccessModel,
+      isLocked,
+      onToggleLock,
+      taskType,
+      confidence,
+      useUserSelection,
     },
     ref,
   ) => {
@@ -141,6 +149,11 @@ export const MessageInput = forwardRef<HTMLTextAreaElement, MessageInputProps>(
               onModelChange={onModelChange}
               modelOptions={modelOptions}
               canAccessModel={canAccessModel}
+              isLocked={isLocked}
+              onToggleLock={onToggleLock}
+              taskType={taskType}
+              confidence={confidence}
+              useUserSelection={useUserSelection}
             />
             <Button
               type="submit"

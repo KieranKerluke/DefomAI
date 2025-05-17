@@ -19,6 +19,8 @@ import litellm
 from utils.logger import logger
 from utils.config import config
 from utils.model_prices import register_custom_model_prices
+from utils.model_router.router import get_model_router
+from services.supabase import get_db_client
 from datetime import datetime
 import traceback
 
@@ -74,93 +76,35 @@ async def handle_error(error: Exception, attempt: int, max_attempts: int) -> Non
     logger.debug(f"Waiting {delay} seconds before retry...")
     await asyncio.sleep(delay)
 
-def get_model_for_task(task_type: str) -> str:
+# Initialize the model router
+model_router = None
+
+async def get_model_for_task(task_type: str, prompt: str = "") -> str:
     """
-    Select the appropriate model based on the task type.
+    Select the appropriate model based on the task type using the model router.
     
     Args:
         task_type: The type of task to perform (chat, code, summarization, etc.)
+        prompt: The user's input prompt (used for better model selection)
         
     Returns:
         The full model path for the appropriate model for this task
     """
-    task_type = task_type.lower()
-    logger.info(f"Selecting model for task type: {task_type}")
+    global model_router
     
-    # Basic conversation
-    if task_type in ['chat', 'conversation', 'qa', 'question']:
-        logger.info(f"Using chat model: {config.MODEL_FOR_CHAT}")
-        return config.MODEL_FOR_CHAT
-        
-    # Complex dialogue
-    elif task_type in ['complex_dialogue', 'deep_conversation', 'multi_turn']:
-        logger.info(f"Using complex dialogue model: {config.MODEL_FOR_COMPLEX_DIALOGUE}")
-        return config.MODEL_FOR_COMPLEX_DIALOGUE
-        
-    # Summarization
-    elif task_type in ['summarize', 'summarization', 'summary']:
-        logger.info(f"Using summarization model: {config.MODEL_FOR_SUMMARIZATION}")
-        return config.MODEL_FOR_SUMMARIZATION
-        
-    # Code generation
-    elif task_type in ['code', 'coding', 'programming', 'generate_code']:
-        logger.info(f"Using code model: {config.MODEL_FOR_CODE}")
-        return config.MODEL_FOR_CODE
-        
-    # Code fixing
-    elif task_type in ['fix_code', 'debug', 'refactor']:
-        logger.info(f"Using code fix model: {config.MODEL_FOR_CODE_FIX}")
-        return config.MODEL_FOR_CODE_FIX
-        
-    # Math reasoning
-    elif task_type in ['math', 'logic', 'reasoning', 'calculation']:
-        logger.info(f"Using math model: {config.MODEL_FOR_MATH}")
-        return config.MODEL_FOR_MATH
-        
-    # Multilingual
-    elif task_type in ['multilingual', 'translation', 'language']:
-        logger.info(f"Using multilingual model: {config.MODEL_FOR_MULTILINGUAL}")
-        return config.MODEL_FOR_MULTILINGUAL
-        
-    # Tool use
-    elif task_type in ['tool_use', 'api', 'function_call', 'agent']:
-        logger.info(f"Using tool use model: {config.MODEL_FOR_TOOL_USE}")
-        return config.MODEL_FOR_TOOL_USE
-        
-    # Fast responses
-    elif task_type in ['fast', 'quick', 'lightweight']:
-        logger.info(f"Using fast response model: {config.MODEL_FOR_FAST_RESPONSE}")
-        return config.MODEL_FOR_FAST_RESPONSE
-        
-    # Complex tasks
-    elif task_type in ['complex', 'research', 'detailed', 'legal']:
-        logger.info(f"Using complex tasks model: {config.MODEL_FOR_COMPLEX_TASKS}")
-        return config.MODEL_FOR_COMPLEX_TASKS
-        
-    # Weather questions - Use tool-optimized model
-    elif task_type in ['weather', 'forecast', 'temperature']:
-        logger.info(f"Using weather model (tool-optimized): {config.MODEL_FOR_TOOL_USE}")
-        return config.MODEL_FOR_TOOL_USE
-        
-    # Data analysis - Use math-optimized model
-    elif task_type in ['data_analysis', 'data', 'statistics', 'visualization']:
-        logger.info(f"Using data analysis model: {config.MODEL_FOR_MATH}")
-        return config.MODEL_FOR_MATH
-        
-    # Creative tasks - Use summarization model (good at text generation)
-    elif task_type in ['creative', 'writing', 'story', 'content']:
-        logger.info(f"Using creative writing model: {config.MODEL_FOR_SUMMARIZATION}")
-        return config.MODEL_FOR_SUMMARIZATION
-        
-    # Market research tasks - Use Qwen3 for complex research and tool use
-    elif task_type in ['market_research', 'market_analysis', 'industry_analysis']:
-        logger.info(f"Using market research model (complex + tool use): {config.MODEL_FOR_COMPLEX_TASKS}")
-        return config.MODEL_FOR_COMPLEX_TASKS
-        
-    # Default fallback
-    else:
-        logger.info(f"No specific model for task type '{task_type}', using default: {config.DEFAULT_MODEL}")
-        return config.DEFAULT_MODEL
+    # Initialize the model router if not already done
+    if model_router is None:
+        model_router = get_model_router(config, get_db_client())
+    
+    # Use the model router to select the appropriate model
+    result = await model_router.select_model(
+        prompt=prompt or f"Task type: {task_type}",
+        user_preference=None,
+        lock_preference=False
+    )
+    
+    logger.info(f"Selected model {result['model_id']} for task type '{task_type}' with confidence {result['confidence']}")
+    return result['model_id']
 
 def get_openrouter_model(model_name: str) -> str:
     """
@@ -317,14 +261,20 @@ async def make_llm_api_call(
     if messages is None:
         messages = [{"role": "user", "content": "Hello, can you give me a quick test response?"}]
     
-    # If task_type is provided, select the appropriate model for the task
-    if task_type is not None:
-        task_specific_model = get_model_for_task(task_type)
-        logger.info(f"Task type '{task_type}' detected, using model: {task_specific_model}")
-        model_name = task_specific_model
+    # Get the user's prompt from messages for model selection
+    user_prompt = next((msg['content'] for msg in reversed(messages) if msg['role'] == 'user'), '')
+    
+    # Always use the model router to select the appropriate model
+    if task_type is None:
+        task_type = "unknown"  # Default task type if not specified
         
-    # debug <timestamp>.json messages
-    logger.info(f"Making LLM API call to model: {model_name} (Thinking: {enable_thinking}, Effort: {reasoning_effort})")
+    # Get the recommended model for this task and prompt
+    selected_model = await get_model_for_task(task_type, user_prompt)
+    
+    # Override the model_name with the one selected by the router
+    model_name = selected_model
+    
+    logger.info(f"Selected model '{model_name}' for task type '{task_type}'")
     logger.info(f"📡 API Call: Using model {model_name}")
     params = prepare_params(
         messages=messages,

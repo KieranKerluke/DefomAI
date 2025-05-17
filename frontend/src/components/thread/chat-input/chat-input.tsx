@@ -76,9 +76,13 @@ export const ChatInput = forwardRef<ChatInputHandles, ChatInputProps>(
     const {
       selectedModel,
       setSelectedModel: handleModelChange,
-      subscriptionStatus,
-      allModels: modelOptions,
+      modelOptions,
       canAccessModel,
+      isLocked,
+      toggleModelLock,
+      taskType,
+      confidence,
+      useUserSelection
     } = useModelSelection();
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -220,8 +224,12 @@ export const ChatInput = forwardRef<ChatInputHandles, ChatInputProps>(
                 selectedModel={selectedModel}
                 onModelChange={handleModelChange}
                 modelOptions={modelOptions}
-                subscriptionStatus={subscriptionStatus}
                 canAccessModel={canAccessModel}
+                isLocked={isLocked}
+                onToggleLock={toggleModelLock}
+                taskType={taskType}
+                confidence={confidence}
+                useUserSelection={useUserSelection}
               />
             </CardContent>
           </div>

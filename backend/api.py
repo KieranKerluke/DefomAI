@@ -19,6 +19,7 @@ from sandbox import api as sandbox_api
 from services import billing as billing_api
 from admin import api as admin_api
 from admin import activate_ai as activate_ai_api
+from routes import model_routes as model_api
 
 # Load environment variables (these will be available through config)
 load_dotenv()
@@ -145,11 +146,24 @@ async def log_requests_middleware(request: Request, call_next):
 # Define allowed origins based on environment
 # Allowed origins for CORS
 allowed_origins = [
-    "http://localhost:3000",  # Frontend development server
-    "http://localhost:8000",  # Backend development server
-    "https://*.vercel.app",   # Vercel preview deployments
-    "https://*.suna.vercel.app"  # Production domain
+    "https://defom-ai.vercel.app",  # Production frontend
+    "https://defomai-backend-production.up.railway.app",  # Production backend
+    "http://localhost:3000",  # Local frontend development
+    "http://localhost:8000"   # Local backend development
 ]
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
+)
+
+# Include API routers
+app.include_router(model_api.router, prefix="/api")
 
 # Original configuration (commented out for now)
 """

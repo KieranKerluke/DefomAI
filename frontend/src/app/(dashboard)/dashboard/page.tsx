@@ -216,7 +216,7 @@ function DashboardContent() {
           </p>
         </div>
         
-        {/* Chat input component - Do not modify this structure */}
+        {/* Chat input component with model selection dropdown */}
         <ChatInput
           ref={chatInputRef}
           onSubmit={handleSubmit}
